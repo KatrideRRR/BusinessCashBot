@@ -31,6 +31,12 @@ const {
 } = require("./bot/modules/operations");
 
 const {
+    registerUserHandlers,
+} = require(
+    "./bot/modules/users"
+);
+
+const {
     getBusinessDate,
 } = require("./utils/businessDate");
 
@@ -1201,6 +1207,7 @@ registerReportHandlers(
 
 registerReportHandlers(bot);
 registerOperationHandlers(bot);
+registerUserHandlers(bot);
 
 bot.catch(
     (error, ctx) => {
