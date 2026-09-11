@@ -568,11 +568,18 @@ const telegramAgent =
         )
         : undefined;
 
+const telegramApiRoot =
+    process.env.TELEGRAM_API_ROOT ||
+    "https://api.telegram.org";
+
 const bot =
     new Telegraf(
         process.env.BOT_TOKEN,
         {
             telegram: {
+                apiRoot:
+                telegramApiRoot,
+
                 ...(telegramAgent
                     ? {
                         agent:
