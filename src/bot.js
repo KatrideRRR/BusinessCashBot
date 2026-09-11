@@ -186,20 +186,83 @@ const createProjectScene =
 createProjectScene.action(
     "confirm_create_project",
     async (ctx) => {
+        /*
+         * Сразу отвечаем Telegram,
+         * чтобы кнопка визуально не "висела".
+         */
+        await ctx.answerCbQuery(
+            "Создаю проект..."
+        );
+
         const name =
             ctx.wizard.state.projectName;
 
-        const project =
-            await Project.create({
-                name,
-                createdBy:
-                ctx.state.user.id,
-            });
+        /*
+         * Убираем кнопки сразу после
+         * первого принятого нажатия.
+         */
+        try {
+            await ctx.editMessageText(
+                `⏳ Создаём проект:\n\n🏢 ${name}`
+            );
+        } catch (_) {
+            // Сообщение могло уже измениться
+            // другим повторным callback.
+        }
 
-        await ctx.answerCbQuery();
+        let project;
 
-        await ctx.editMessageText(
-            `✅ Проект «${name}» создан.`
+        try {
+            const [result, created] =
+                await Project.findOrCreate({
+                    where: {
+                        name,
+                    },
+
+                    defaults: {
+                        name,
+
+                        createdBy:
+                        ctx.state.user.id,
+                    },
+                });
+
+            project = result;
+
+            if (!created) {
+                await ctx.reply(
+                    `ℹ️ Проект «${name}» уже существует.`
+                );
+
+                await ctx.reply(
+                    "Главное меню:",
+                    getMainMenu()
+                );
+
+                return ctx.scene.leave();
+            }
+        } catch (error) {
+            if (
+                error.name ===
+                "SequelizeUniqueConstraintError"
+            ) {
+                await ctx.reply(
+                    `ℹ️ Проект «${name}» уже существует.`
+                );
+
+                await ctx.reply(
+                    "Главное меню:",
+                    getMainMenu()
+                );
+
+                return ctx.scene.leave();
+            }
+
+            throw error;
+        }
+
+        await ctx.reply(
+            `✅ Проект «${project.name}» создан.`
         );
 
         await ctx.reply(
