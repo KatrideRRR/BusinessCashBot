@@ -19,6 +19,10 @@ const {
     col,
 } = require("sequelize");
 
+const {
+    SocksProxyAgent,
+} = require("socks-proxy-agent");
+
 const editTransactionScene =
     require("./bot/scenes/editTransactionScene");
 
@@ -485,9 +489,29 @@ const stage =
         editTransactionScene,
     ]);
 
+const telegramProxyUrl =
+    process.env.TELEGRAM_PROXY_URL;
+
+const telegramAgent =
+    telegramProxyUrl
+        ? new SocksProxyAgent(
+            telegramProxyUrl
+        )
+        : undefined;
+
 const bot =
     new Telegraf(
-        process.env.BOT_TOKEN
+        process.env.BOT_TOKEN,
+        {
+            telegram: {
+                ...(telegramAgent
+                    ? {
+                        agent:
+                        telegramAgent,
+                    }
+                    : {}),
+            },
+        }
     );
 
 bot.use(session());
