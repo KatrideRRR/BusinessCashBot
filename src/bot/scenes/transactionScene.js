@@ -74,19 +74,6 @@ async function askAmount(ctx) {
     );
 }
 
-async function askComment(ctx) {
-    ctx.scene.state.awaiting =
-        "comment";
-
-    await ctx.reply(
-        "Добавить комментарий?",
-        Markup.keyboard([
-            ["⏭ Без комментария"],
-            ["❌ Отмена"],
-        ]).resize()
-    );
-}
-
 async function showConfirmation(
     ctx
 ) {
@@ -119,11 +106,6 @@ async function showConfirmation(
             "today_revenue"
                 ? "из сегодняшней выручки"
                 : "из других денег";
-    }
-
-    if (state.comment) {
-        text +=
-            `\n\n💬 ${state.comment}`;
     }
 
     text +=
@@ -510,8 +492,9 @@ transactionScene.action(
             return;
         }
 
-        await askComment(ctx);
-    }
+        ctx.scene.state.comment = null;
+
+        return showConfirmation(ctx);    }
 );
 
 /*
@@ -547,7 +530,10 @@ transactionScene.action(
         ctx.scene.state.fundSource =
             "today_revenue";
 
-        await askComment(ctx);
+        ctx.scene.state.comment =
+            null;
+
+        return showConfirmation(ctx);
     }
 );
 
@@ -559,7 +545,10 @@ transactionScene.action(
         ctx.scene.state.fundSource =
             "other";
 
-        await askComment(ctx);
+        ctx.scene.state.comment =
+            null;
+
+        return showConfirmation(ctx);
     }
 );
 
@@ -853,34 +842,14 @@ transactionScene.on(
                 return;
             }
 
-            await askComment(ctx);
+            ctx.scene.state.comment =
+                null;
+
+            await showConfirmation(ctx);
 
             return;
         }
 
-        /*
-         * Комментарий
-         */
-
-        if (
-            awaiting ===
-            "comment"
-        ) {
-            if (
-                text ===
-                "⏭ Без комментария"
-            ) {
-                ctx.scene.state.comment =
-                    null;
-            } else {
-                ctx.scene.state.comment =
-                    text;
-            }
-
-            await showConfirmation(
-                ctx
-            );
-        }
 
         /*
  * Не оставляем пользователя
@@ -941,9 +910,7 @@ transactionScene.action(
                         )
                         : null,
 
-                comment:
-                    state.comment ||
-                    null,
+                comment: null,
 
                 createdBy:
                 ctx.state.user.id,
