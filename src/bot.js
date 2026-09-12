@@ -558,6 +558,51 @@ const stage =
         editTransactionScene,
     ]);
 
+/*
+ * Главное меню должно работать
+ * из любой активной сцены.
+ *
+ * Если пользователь во время создания
+ * расхода / проекта / закрытия дня
+ * нажал кнопку главного меню —
+ * выходим из текущей сцены и передаём
+ * update обычным bot.hears handlers.
+ */
+
+const GLOBAL_MENU_COMMANDS =
+    new Set([
+        "🏢 Проекты",
+        "➖ Расход",
+        "✅ Закрыть день",
+        "📊 Отчёты",
+        "👥 Пользователи",
+    ]);
+
+stage.use(
+    async (ctx, next) => {
+        const text =
+            ctx.message?.text?.trim();
+
+        if (
+            text &&
+            GLOBAL_MENU_COMMANDS.has(
+                text
+            ) &&
+            ctx.scene.current
+        ) {
+            console.log(
+                `[SCENE EXIT] ` +
+                `${ctx.scene.current.id} -> ` +
+                `${text}`
+            );
+
+            await ctx.scene.leave();
+        }
+
+        return next();
+    }
+);
+
 const telegramProxyUrl =
     process.env.TELEGRAM_PROXY_URL;
 
@@ -635,11 +680,23 @@ bot.use(
         const startedAt =
             Date.now();
 
+        const messageText =
+            ctx.message?.text || "";
+
+        const callbackData =
+            ctx.callbackQuery?.data || "";
+
         console.log(
             `[TG IN] ` +
             `update=${ctx.update?.update_id} ` +
             `type=${ctx.updateType} ` +
-            `user=${ctx.from?.id}`
+            `user=${ctx.from?.id} ` +
+            `text=${JSON.stringify(
+                messageText
+            )} ` +
+            `callback=${JSON.stringify(
+                callbackData
+            )}`
         );
 
         try {
@@ -1331,10 +1388,6 @@ bot.hears(
             "close-day"
         );
     }
-);
-
-registerReportHandlers(
-    bot
 );
 
 registerReportHandlers(bot);
