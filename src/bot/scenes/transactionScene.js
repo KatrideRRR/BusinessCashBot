@@ -293,6 +293,13 @@ transactionScene.action(
         ctx.scene.state.projectName =
             project.name;
 
+        ctx.scene.state
+            .trackTodayRevenueSource =
+            Boolean(
+                project
+                    .trackTodayRevenueSource
+            );
+
         const categories =
             await Category.findAll({
                 where: {
@@ -920,8 +927,19 @@ transactionScene.action(
                     getBusinessDate(),
 
                 fundSource:
-                    state.fundSource ||
-                    null,
+                    state.operationType ===
+                    "expense"
+                        ? (
+                            state
+                                .trackTodayRevenueSource
+                                ? (
+                                    state
+                                        .fundSource ||
+                                    null
+                                )
+                                : "other"
+                        )
+                        : null,
 
                 comment:
                     state.comment ||

@@ -47,21 +47,51 @@ const closeDayScene =
  */
 
 async function getExpenseSummary(
-    projectId
+    projectId,
+    trackTodayRevenueSource
 ) {
+    /*
+     * Если проект не использует
+     * расходы из дневной выручки,
+     * его расходы вообще не относятся
+     * к закрытию кассы.
+     */
+    if (!trackTodayRevenueSource) {
+        return {
+            total: 0n,
+            rows: [],
+        };
+    }
+
     const rows =
         await Transaction.findAll({
             where: {
                 projectId,
-                type: "expense",
+
+                type:
+                    "expense",
+
                 businessDate:
                     getBusinessDate(),
+
+                /*
+                 * Из кассы смены вычитаем
+                 * только то, что реально
+                 * взяли из сегодняшней
+                 * выручки.
+                 */
+                fundSource:
+                    "today_revenue",
             },
 
             include: [
                 {
-                    model: Category,
-                    as: "category",
+                    model:
+                    Category,
+
+                    as:
+                        "category",
+
                     attributes: [
                         "id",
                         "name",
@@ -73,7 +103,8 @@ async function getExpenseSummary(
     const map =
         new Map();
 
-    let total = 0n;
+    let total =
+        0n;
 
     for (const row of rows) {
         const amount =
@@ -81,7 +112,8 @@ async function getExpenseSummary(
                 row.amountKopecks
             );
 
-        total += amount;
+        total +=
+            amount;
 
         const categoryName =
             row.category?.name ||
@@ -100,14 +132,16 @@ async function getExpenseSummary(
 
     return {
         total,
-        rows: Array.from(
-            map.entries()
-        ).map(
-            ([name, amount]) => ({
-                name,
-                amount,
-            })
-        ),
+
+        rows:
+            Array.from(
+                map.entries()
+            ).map(
+                ([name, amount]) => ({
+                    name,
+                    amount,
+                })
+            ),
     };
 }
 
@@ -136,7 +170,9 @@ async function renderDraft(
 
     const expenses =
         await getExpenseSummary(
-            state.projectId
+            state.projectId,
+            state
+                .trackTodayRevenueSource
         );
 
     const incomeTotal =
@@ -311,7 +347,9 @@ async function finalizeClosure(
 
         const expenses =
             await getExpenseSummary(
-                state.projectId
+                state.projectId,
+                state
+                    .trackTodayRevenueSource
             );
 
         const totalIncome =
@@ -830,9 +868,13 @@ closeDayScene.action(
             .selectedCategoryName =
             category.name;
 
-        await ensureDefaultPaymentMethods(
-            ctx.scene.state.projectId
-        );
+        if (
+            ctx.scene.state.projectId !== 7
+        ) {
+            await ensureDefaultPaymentMethods(
+                ctx.scene.state.projectId
+            );
+        }
 
         const methods =
             await PaymentMethod.findAll({
