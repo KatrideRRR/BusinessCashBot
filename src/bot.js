@@ -590,7 +590,69 @@ const bot =
         }
     );
 
+const originalCallApi =
+    bot.telegram.callApi.bind(
+        bot.telegram
+    );
+
+bot.telegram.callApi =
+    async (method, payload) => {
+        const startedAt =
+            Date.now();
+
+        console.log(
+            `[TG OUT START] ${method}`
+        );
+
+        try {
+            const result =
+                await originalCallApi(
+                    method,
+                    payload
+                );
+
+            console.log(
+                `[TG OUT END] ${method} ` +
+                `${Date.now() - startedAt} ms`
+            );
+
+            return result;
+        } catch (error) {
+            console.error(
+                `[TG OUT ERROR] ${method} ` +
+                `${Date.now() - startedAt} ms`,
+                error.message
+            );
+
+            throw error;
+        }
+    };
+
 bot.use(session());
+
+bot.use(
+    async (ctx, next) => {
+        const startedAt =
+            Date.now();
+
+        console.log(
+            `[TG IN] ` +
+            `update=${ctx.update?.update_id} ` +
+            `type=${ctx.updateType} ` +
+            `user=${ctx.from?.id}`
+        );
+
+        try {
+            await next();
+        } finally {
+            console.log(
+                `[TG DONE] ` +
+                `update=${ctx.update?.update_id} ` +
+                `${Date.now() - startedAt} ms`
+            );
+        }
+    }
+);
 
 bot.use(authMiddleware);
 
