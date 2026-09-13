@@ -6,6 +6,10 @@ const sequelize =
 const bot =
     require("./bot");
 
+const {
+    startIntegrationServer,
+} = require("./integrationServer");
+
 async function startApp() {
     try {
         console.log(
@@ -23,6 +27,8 @@ async function startApp() {
         console.log(
             "✅ Таблицы синхронизированы"
         );
+
+        startIntegrationServer();
 
         const webhookEnabled =
             process.env

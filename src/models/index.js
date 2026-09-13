@@ -5,6 +5,7 @@ const Category = require("./Category");
 const PaymentMethod = require("./PaymentMethod");
 const Transaction = require("./Transaction");
 const DailyClosure = require("./DailyClosure");
+const CampCardEvent = require("./CampCardEvent");
 
 /*
  * User ↔ ProjectUser
@@ -154,4 +155,5 @@ module.exports = {
     PaymentMethod,
     Transaction,
     DailyClosure,
+    CampCardEvent,
 };

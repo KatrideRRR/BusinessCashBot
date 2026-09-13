@@ -162,6 +162,73 @@ function getDraftIncomeTotal(
     );
 }
 
+async function getCampCardIncomeSummary(
+    projectId,
+    dbTransaction = null
+) {
+    const paymentMethod =
+        await PaymentMethod.findOne({
+            where: {
+                projectId,
+                name: "Camp Card",
+                isActive: true,
+            },
+
+            transaction:
+            dbTransaction,
+        });
+
+    if (!paymentMethod) {
+        return {
+            total: 0n,
+            paymentMethod: null,
+        };
+    }
+
+    /*
+     * Camp Card создаёт автоматические
+     * операции с closureId = null.
+     *
+     * Поэтому ручные строки закрытия
+     * сюда никогда не попадут.
+     */
+    const rows =
+        await Transaction.findAll({
+            where: {
+                projectId,
+
+                type:
+                    "income",
+
+                businessDate:
+                    getBusinessDate(),
+
+                paymentMethodId:
+                paymentMethod.id,
+
+                closureId:
+                    null,
+            },
+
+            transaction:
+            dbTransaction,
+        });
+
+    let total = 0n;
+
+    for (const row of rows) {
+        total +=
+            BigInt(
+                row.amountKopecks
+            );
+    }
+
+    return {
+        total,
+        paymentMethod,
+    };
+}
+
 async function renderDraft(
     ctx
 ) {
@@ -175,10 +242,19 @@ async function renderDraft(
                 .trackTodayRevenueSource
         );
 
-    const incomeTotal =
+    const manualIncomeTotal =
         getDraftIncomeTotal(
             ctx
         );
+
+    const campCardIncome =
+        await getCampCardIncomeSummary(
+            state.projectId
+        );
+
+    const incomeTotal =
+        manualIncomeTotal +
+        campCardIncome.total;
 
     const result =
         incomeTotal -
@@ -197,23 +273,42 @@ async function renderDraft(
         `💰 ПОСТУПЛЕНИЯ\n`;
 
     if (
-        !state.lines ||
-        state.lines.length === 0
+        (
+            !state.lines ||
+            state.lines.length === 0
+        ) &&
+        campCardIncome.total === 0n
     ) {
         text +=
             `Пока не добавлены.\n`;
     } else {
-        state.lines.forEach(
-            (line, index) => {
-                text +=
-                    `${index + 1}. ` +
-                    `${line.categoryName} / ` +
-                    `${line.paymentMethodName} — ` +
-                    `${formatKopecks(
-                        line.amountKopecks
-                    )}\n`;
-            }
-        );
+
+        if (
+            state.lines &&
+            state.lines.length > 0
+        ) {
+            state.lines.forEach(
+                (line, index) => {
+                    text +=
+                        `${index + 1}. ` +
+                        `${line.categoryName} / ` +
+                        `${line.paymentMethodName} — ` +
+                        `${formatKopecks(
+                            line.amountKopecks
+                        )}\n`;
+                }
+            );
+        }
+
+        if (
+            campCardIncome.total > 0n
+        ) {
+            text +=
+                `💳 Camp Card — ` +
+                `${formatKopecks(
+                    campCardIncome.total
+                )}\n`;
+        }
     }
 
     text +=
@@ -352,19 +447,39 @@ async function finalizeClosure(
                     .trackTodayRevenueSource
             );
 
-        const totalIncome =
+        const manualIncomeTotal =
             getDraftIncomeTotal(
                 ctx
             );
 
-        const result =
-            totalIncome -
-            expenses.total;
+        let finalTotalIncome = 0n;
+        let finalResult = 0n;
 
         await sequelize.transaction(
             async (
                 dbTransaction
             ) => {
+
+                const campCardIncome =
+                    await getCampCardIncomeSummary(
+                        state.projectId,
+                        dbTransaction
+                    );
+
+                const totalIncome =
+                    manualIncomeTotal +
+                    campCardIncome.total;
+
+                const result =
+                    totalIncome -
+                    expenses.total;
+
+                finalTotalIncome =
+                    totalIncome;
+
+                finalResult =
+                    result;
+
                 let closure;
 
                 if (
@@ -509,14 +624,14 @@ async function finalizeClosure(
             `🏢 ${state.projectName}\n` +
             `📅 ${businessDate}\n\n` +
             `💰 Выручка: ${formatKopecks(
-                totalIncome
+                finalTotalIncome
             )}\n` +
             `➖ Расходы: ${formatKopecks(
                 expenses.total
             )}\n` +
             `──────────────\n` +
             `📊 Результат: ${formatKopecks(
-                result
+                finalResult
             )}`,
             getMainMenu()
         );
@@ -891,8 +1006,15 @@ closeDayScene.action(
                 ],
             });
 
+        const visibleMethods =
+            methods.filter(
+                (method) =>
+                    method.name !==
+                    "Camp Card"
+            );
+
         const buttons =
-            methods.map(
+            visibleMethods.map(
                 (method) => [
                     Markup.button.callback(
                         method.name,
