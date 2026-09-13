@@ -15,14 +15,6 @@ const DEFAULT_PAYMENT_METHODS = [
         name: "Перевод",
         type: "transfer",
     },
-    {
-        name: "Расчётный счёт",
-        type: "bank_account",
-    },
-    {
-        name: "Другое",
-        type: "other",
-    },
 ];
 
 async function ensureDefaultPaymentMethods(
