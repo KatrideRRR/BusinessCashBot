@@ -16,24 +16,16 @@ const PurchaseOrder = sequelize.define(
             field: "project_id",
         },
 
-        itemId: {
-            type: DataTypes.INTEGER.UNSIGNED,
-            allowNull: false,
-            field: "item_id",
-        },
-
         supplierId: {
             type: DataTypes.INTEGER.UNSIGNED,
-            allowNull: true,
+            allowNull: false,
             field: "supplier_id",
         },
 
-        quantity: {
-            type: DataTypes.DECIMAL(
-                12,
-                3
-            ),
+        deliveryAddress: {
+            type: DataTypes.STRING(255),
             allowNull: false,
+            field: "delivery_address",
         },
 
         orderForDate: {
@@ -61,6 +53,13 @@ const PurchaseOrder = sequelize.define(
             {
                 fields: [
                     "project_id",
+                    "created_at",
+                ],
+            },
+
+            {
+                fields: [
+                    "supplier_id",
                     "created_at",
                 ],
             },

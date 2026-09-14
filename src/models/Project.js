@@ -35,6 +35,12 @@ const Project = sequelize.define(
             field: "track_today_revenue_source",
         },
 
+        purchaseAddress: {
+            type: DataTypes.STRING(255),
+            allowNull: true,
+            field: "purchase_address",
+        },
+
         revenueMode: {
             type: DataTypes.ENUM(
                 "daily_close",

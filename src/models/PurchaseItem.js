@@ -10,10 +10,10 @@ const PurchaseItem = sequelize.define(
             primaryKey: true,
         },
 
-        projectId: {
+        supplierId: {
             type: DataTypes.INTEGER.UNSIGNED,
             allowNull: false,
-            field: "project_id",
+            field: "supplier_id",
         },
 
         name: {
@@ -25,12 +25,6 @@ const PurchaseItem = sequelize.define(
             type: DataTypes.STRING(50),
             allowNull: false,
             defaultValue: "шт.",
-        },
-
-        defaultSupplierId: {
-            type: DataTypes.INTEGER.UNSIGNED,
-            allowNull: true,
-            field: "default_supplier_id",
         },
 
         isActive: {
@@ -52,7 +46,7 @@ const PurchaseItem = sequelize.define(
         indexes: [
             {
                 fields: [
-                    "project_id",
+                    "supplier_id",
                     "is_active",
                 ],
             },

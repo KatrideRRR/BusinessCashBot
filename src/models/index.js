@@ -11,6 +11,7 @@ const DebtEntry = require("./DebtEntry");
 const Supplier = require("./Supplier");
 const PurchaseItem = require("./PurchaseItem");
 const PurchaseOrder = require("./PurchaseOrder");
+const PurchaseOrderItem = require("./PurchaseOrderItem");
 
 /*
  * User ↔ ProjectUser
@@ -190,15 +191,39 @@ DebtEntry.belongsTo(User, {
     as: "createdByUser",
 });
 
-Project.hasMany(
+/*
+ * Supplier ↔ PurchaseItem
+ */
+
+Supplier.hasMany(
     PurchaseItem,
     {
-        foreignKey: "projectId",
-        as: "purchaseItems",
+        foreignKey: "supplierId",
+        as: "items",
     }
 );
 
 PurchaseItem.belongsTo(
+    Supplier,
+    {
+        foreignKey: "supplierId",
+        as: "supplier",
+    }
+);
+
+/*
+ * Project ↔ PurchaseOrder
+ */
+
+Project.hasMany(
+    PurchaseOrder,
+    {
+        foreignKey: "projectId",
+        as: "purchaseOrders",
+    }
+);
+
+PurchaseOrder.belongsTo(
     Project,
     {
         foreignKey: "projectId",
@@ -206,14 +231,63 @@ PurchaseItem.belongsTo(
     }
 );
 
+/*
+ * Supplier ↔ PurchaseOrder
+ */
+
 Supplier.hasMany(
+    PurchaseOrder,
+    {
+        foreignKey: "supplierId",
+        as: "orders",
+    }
+);
+
+PurchaseOrder.belongsTo(
+    Supplier,
+    {
+        foreignKey: "supplierId",
+        as: "supplier",
+    }
+);
+
+/*
+ * PurchaseOrder ↔ PurchaseOrderItem
+ */
+
+PurchaseOrder.hasMany(
+    PurchaseOrderItem,
+    {
+        foreignKey: "orderId",
+        as: "items",
+    }
+);
+
+PurchaseOrderItem.belongsTo(
+    PurchaseOrder,
+    {
+        foreignKey: "orderId",
+        as: "order",
+    }
+);
+
+/*
+ * PurchaseItem ↔ PurchaseOrderItem
+ */
+
+PurchaseItem.hasMany(
+    PurchaseOrderItem,
+    {
+        foreignKey: "itemId",
+        as: "orderItems",
+    }
+);
+
+PurchaseOrderItem.belongsTo(
     PurchaseItem,
     {
-        foreignKey:
-            "defaultSupplierId",
-
-        as:
-            "defaultItems",
+        foreignKey: "itemId",
+        as: "item",
     }
 );
 
@@ -290,4 +364,5 @@ module.exports = {
     Supplier,
     PurchaseItem,
     PurchaseOrder,
+    PurchaseOrderItem,
 };
