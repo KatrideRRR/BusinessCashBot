@@ -39,6 +39,9 @@ const {
     "./bot/modules/users"
 );
 
+const purchaseScene =
+    require("./bot/scenes/purchaseScene");
+
 const {
     getBusinessDate,
 } = require("./utils/businessDate");
@@ -560,6 +563,7 @@ const stage =
         closeDayScene,
         editTransactionScene,
         debtScene,
+        purchaseScene,
     ]);
 
 /*
@@ -578,6 +582,7 @@ const GLOBAL_MENU_COMMANDS =
         "🏢 Проекты",
         "➖ Расход",
         "✅ Закрыть день",
+        "🛒 Заказать",
         "📊 Отчёты",
         "🧾 Долги",
         "👥 Пользователи",
@@ -725,6 +730,15 @@ bot.hears(
     async (ctx) => {
         await ctx.scene.enter(
             "debts"
+        );
+    }
+);
+
+bot.hears(
+    "🛒 Заказать",
+    async (ctx) => {
+        await ctx.scene.enter(
+            "purchase"
         );
     }
 );

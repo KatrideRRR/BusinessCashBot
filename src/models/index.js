@@ -8,6 +8,9 @@ const DailyClosure = require("./DailyClosure");
 const CampCardEvent = require("./CampCardEvent");
 const Debtor = require("./Debtor");
 const DebtEntry = require("./DebtEntry");
+const Supplier = require("./Supplier");
+const PurchaseItem = require("./PurchaseItem");
+const PurchaseOrder = require("./PurchaseOrder");
 
 /*
  * User ↔ ProjectUser
@@ -187,6 +190,92 @@ DebtEntry.belongsTo(User, {
     as: "createdByUser",
 });
 
+Project.hasMany(
+    PurchaseItem,
+    {
+        foreignKey: "projectId",
+        as: "purchaseItems",
+    }
+);
+
+PurchaseItem.belongsTo(
+    Project,
+    {
+        foreignKey: "projectId",
+        as: "project",
+    }
+);
+
+Supplier.hasMany(
+    PurchaseItem,
+    {
+        foreignKey:
+            "defaultSupplierId",
+
+        as:
+            "defaultItems",
+    }
+);
+
+PurchaseItem.belongsTo(
+    Supplier,
+    {
+        foreignKey:
+            "defaultSupplierId",
+
+        as:
+            "defaultSupplier",
+    }
+);
+
+Project.hasMany(
+    PurchaseOrder,
+    {
+        foreignKey: "projectId",
+        as: "purchaseOrders",
+    }
+);
+
+PurchaseOrder.belongsTo(
+    Project,
+    {
+        foreignKey: "projectId",
+        as: "project",
+    }
+);
+
+PurchaseItem.hasMany(
+    PurchaseOrder,
+    {
+        foreignKey: "itemId",
+        as: "orders",
+    }
+);
+
+PurchaseOrder.belongsTo(
+    PurchaseItem,
+    {
+        foreignKey: "itemId",
+        as: "item",
+    }
+);
+
+Supplier.hasMany(
+    PurchaseOrder,
+    {
+        foreignKey: "supplierId",
+        as: "orders",
+    }
+);
+
+PurchaseOrder.belongsTo(
+    Supplier,
+    {
+        foreignKey: "supplierId",
+        as: "supplier",
+    }
+);
+
 module.exports = {
     User,
     Project,
@@ -198,4 +287,7 @@ module.exports = {
     CampCardEvent,
     Debtor,
     DebtEntry,
+    Supplier,
+    PurchaseItem,
+    PurchaseOrder,
 };
