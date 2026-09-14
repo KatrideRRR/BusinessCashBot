@@ -6,6 +6,8 @@ const PaymentMethod = require("./PaymentMethod");
 const Transaction = require("./Transaction");
 const DailyClosure = require("./DailyClosure");
 const CampCardEvent = require("./CampCardEvent");
+const Debtor = require("./Debtor");
+const DebtEntry = require("./DebtEntry");
 
 /*
  * User ↔ ProjectUser
@@ -147,6 +149,58 @@ DailyClosure.belongsTo(User, {
     as: "closedByUser",
 });
 
+/*
+ * Project ↔ Debtor
+ */
+
+Project.hasMany(Debtor, {
+    foreignKey: "projectId",
+    as: "debtors",
+});
+
+Debtor.belongsTo(Project, {
+    foreignKey: "projectId",
+    as: "project",
+});
+
+/*
+ * Debtor ↔ DebtEntry
+ */
+
+Debtor.hasMany(DebtEntry, {
+    foreignKey: "debtorId",
+    as: "entries",
+});
+
+DebtEntry.belongsTo(Debtor, {
+    foreignKey: "debtorId",
+    as: "debtor",
+});
+
+/*
+ * User ↔ debts
+ */
+
+User.hasMany(Debtor, {
+    foreignKey: "createdBy",
+    as: "createdDebtors",
+});
+
+Debtor.belongsTo(User, {
+    foreignKey: "createdBy",
+    as: "createdByUser",
+});
+
+User.hasMany(DebtEntry, {
+    foreignKey: "createdBy",
+    as: "createdDebtEntries",
+});
+
+DebtEntry.belongsTo(User, {
+    foreignKey: "createdBy",
+    as: "createdByUser",
+});
+
 module.exports = {
     User,
     Project,
@@ -156,4 +210,6 @@ module.exports = {
     Transaction,
     DailyClosure,
     CampCardEvent,
+    Debtor,
+    DebtEntry,
 };

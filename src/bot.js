@@ -23,6 +23,9 @@ const {
     SocksProxyAgent,
 } = require("socks-proxy-agent");
 
+const debtScene =
+    require("./bot/scenes/debtScene");
+
 const editTransactionScene =
     require("./bot/scenes/editTransactionScene");
 
@@ -556,6 +559,7 @@ const stage =
         transactionScene,
         closeDayScene,
         editTransactionScene,
+        debtScene,
     ]);
 
 /*
@@ -575,6 +579,7 @@ const GLOBAL_MENU_COMMANDS =
         "➖ Расход",
         "✅ Закрыть день",
         "📊 Отчёты",
+        "🧾 Долги",
         "👥 Пользователи",
     ]);
 
@@ -714,6 +719,15 @@ bot.use(
 bot.use(authMiddleware);
 
 bot.use(stage.middleware());
+
+bot.hears(
+    "🧾 Долги",
+    async (ctx) => {
+        await ctx.scene.enter(
+            "debts"
+        );
+    }
+);
 
 /*
  * /start
