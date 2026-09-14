@@ -206,6 +206,91 @@ async function getExpenseByCategory(
     );
 }
 
+async function getExpenseByCategoryAndSource(
+    projectId,
+    startDate,
+    endDate
+) {
+    const rows =
+        await Transaction.findAll({
+            attributes: [
+                "categoryId",
+                "fundSource",
+                [
+                    fn(
+                        "SUM",
+                        col(
+                            "amount_kopecks"
+                        )
+                    ),
+                    "total",
+                ],
+            ],
+
+            where: {
+                projectId,
+                type: "expense",
+
+                businessDate: {
+                    [Op.between]: [
+                        startDate,
+                        endDate,
+                    ],
+                },
+            },
+
+            include: [
+                {
+                    model:
+                    Category,
+
+                    as:
+                        "category",
+
+                    attributes: [
+                        "name",
+                    ],
+                },
+            ],
+
+            group: [
+                "categoryId",
+                "fundSource",
+                "category.id",
+                "category.name",
+            ],
+
+            raw: true,
+        });
+
+    return rows
+        .map(
+            (row) => ({
+                name:
+                    row[
+                        "category.name"
+                        ] ||
+                    "Без статьи",
+
+                source:
+                    row.fundSource ||
+                    "unknown",
+
+                amount:
+                    BigInt(
+                        row.total || 0
+                    ),
+            })
+        )
+        .sort(
+            (a, b) =>
+                a.amount >
+                b.amount
+                    ? -1
+                    : 1
+        );
+}
+
 async function getByCategory(
     projectId,
     type,
@@ -308,5 +393,6 @@ module.exports = {
     getIncomeByPaymentMethod,
     getIncomeByCategory,
     getExpenseByCategory,
+    getExpenseByCategoryAndSource,
     getClosureStatus,
 };

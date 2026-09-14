@@ -14,6 +14,7 @@ const {
     getIncomeByPaymentMethod,
     getIncomeByCategory,
     getExpenseByCategory,
+    getExpenseByCategoryAndSource,
     getClosureStatus,
 } = require(
     "../../services/reportService"
@@ -280,11 +281,18 @@ async function showProjectReport(
                 period.endDate
             ),
 
-            getExpenseByCategory(
-                project.id,
-                period.startDate,
-                period.endDate
-            ),
+            project
+                .trackTodayRevenueSource
+                ? getExpenseByCategoryAndSource(
+                    project.id,
+                    period.startDate,
+                    period.endDate
+                )
+                : getExpenseByCategory(
+                    project.id,
+                    period.startDate,
+                    period.endDate
+                ),
         ]);
 
     let text =
@@ -351,8 +359,8 @@ async function showProjectReport(
     }
 
     /*
-     * Расходы
-     */
+ * Расходы
+ */
 
     text +=
         "\n➖ РАСХОДЫ\n";
@@ -363,6 +371,93 @@ async function showProjectReport(
     ) {
         text +=
             "Расходов нет.\n";
+    } else if (
+        project
+            .trackTodayRevenueSource
+    ) {
+        const todayRevenueExpenses =
+            expenseCategories.filter(
+                (row) =>
+                    row.source ===
+                    "today_revenue"
+            );
+
+        const otherExpenses =
+            expenseCategories.filter(
+                (row) =>
+                    row.source ===
+                    "other"
+            );
+
+        const unknownExpenses =
+            expenseCategories.filter(
+                (row) =>
+                    row.source ===
+                    "unknown"
+            );
+
+        text +=
+            "\n💰 Из сегодняшней выручки\n";
+
+        if (
+            todayRevenueExpenses
+                .length === 0
+        ) {
+            text +=
+                "Нет расходов.\n";
+        } else {
+            for (
+                const row
+                of todayRevenueExpenses
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
+                        row.amount
+                    )}\n`;
+            }
+        }
+
+        text +=
+            "\n🏦 Из других денег\n";
+
+        if (
+            otherExpenses.length ===
+            0
+        ) {
+            text +=
+                "Нет расходов.\n";
+        } else {
+            for (
+                const row
+                of otherExpenses
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
+                        row.amount
+                    )}\n`;
+            }
+        }
+
+        if (
+            unknownExpenses.length >
+            0
+        ) {
+            text +=
+                "\n⚪ Источник не указан\n";
+
+            for (
+                const row
+                of unknownExpenses
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
+                        row.amount
+                    )}\n`;
+            }
+        }
     } else {
         for (
             const row
@@ -380,13 +475,6 @@ async function showProjectReport(
         `\nВсего расходов: ` +
         `${formatKopecks(
             totals.expense
-        )}`;
-
-    text +=
-        `\n\n──────────────\n` +
-        `📈 Результат: ` +
-        `${formatKopecks(
-            totals.result
         )}`;
 
     /*
