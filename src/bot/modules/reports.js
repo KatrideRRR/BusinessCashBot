@@ -304,60 +304,92 @@ async function showProjectReport(
         )}\n\n`;
 
     /*
-     * Доходы
-     */
+ * Доход / выручка
+ *
+ * daily_close:
+ * показываем именно ВЫРУЧКУ
+ * и разбивку по каналам.
+ *
+ * direct:
+ * показываем ДОХОДЫ
+ * по статьям.
+ *
+ * Если поступлений нет —
+ * пустой блок вообще не выводим.
+ */
 
-    text +=
-        `💰 ДОХОДЫ\n`;
-
-    if (
-        incomeCategories.length ===
-        0
-    ) {
-        text +=
-            "Доходов нет.\n";
-    } else {
-        for (
-            const row
-            of incomeCategories
-            ) {
+    if (totals.income > 0n) {
+        if (
+            project.revenueMode ===
+            "daily_close"
+        ) {
             text +=
-                `${row.name} — ` +
-                `${formatKopecks(
-                    row.amount
-                )}\n`;
-        }
-    }
+                `💰 ВЫРУЧКА\n`;
 
-    text +=
-        `\nВсего доход: ` +
-        `${formatKopecks(
-            totals.income
-        )}`;
-
-    /*
-     * Каналы
-     */
-
-    if (
-        paymentMethods.length >
-        0
-    ) {
-        text +=
-            "\n\n💳 ПО КАНАЛАМ\n";
-
-        for (
-            const row
-            of paymentMethods
+            if (
+                paymentMethods.length >
+                0
             ) {
-            text +=
-                `${row.name} — ` +
-                `${formatKopecks(
-                    row.amount
-                )}\n`;
-        }
-    }
+                for (
+                    const row
+                    of paymentMethods
+                    ) {
+                    text +=
+                        `${row.name} — ` +
+                        `${formatKopecks(
+                            row.amount
+                        )}\n`;
+                }
+            }
 
+            text +=
+                `\nВсего выручка: ` +
+                `${formatKopecks(
+                    totals.income
+                )}\n`;
+        } else {
+            text +=
+                `💰 ДОХОДЫ\n`;
+
+            for (
+                const row
+                of incomeCategories
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
+                        row.amount
+                    )}\n`;
+            }
+
+            text +=
+                `\nВсего доход: ` +
+                `${formatKopecks(
+                    totals.income
+                )}\n`;
+
+            if (
+                paymentMethods.length >
+                0
+            ) {
+                text +=
+                    `\n💳 ПО КАНАЛАМ\n`;
+
+                for (
+                    const row
+                    of paymentMethods
+                    ) {
+                    text +=
+                        `${row.name} — ` +
+                        `${formatKopecks(
+                            row.amount
+                        )}\n`;
+                }
+            }
+        }
+
+        text += "\n";
+    }
     /*
  * Расходы
  */
@@ -476,6 +508,18 @@ async function showProjectReport(
         `${formatKopecks(
             totals.expense
         )}`;
+
+    if (
+        totals.income > 0n ||
+        totals.expense > 0n
+    ) {
+        text +=
+            `\n\n──────────────\n` +
+            `📈 Финансовый результат: ` +
+            `${formatKopecks(
+                totals.result
+            )}`;
+    }
 
     /*
      * Статус дня
