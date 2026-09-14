@@ -291,65 +291,6 @@ PurchaseOrderItem.belongsTo(
     }
 );
 
-PurchaseItem.belongsTo(
-    Supplier,
-    {
-        foreignKey:
-            "defaultSupplierId",
-
-        as:
-            "defaultSupplier",
-    }
-);
-
-Project.hasMany(
-    PurchaseOrder,
-    {
-        foreignKey: "projectId",
-        as: "purchaseOrders",
-    }
-);
-
-PurchaseOrder.belongsTo(
-    Project,
-    {
-        foreignKey: "projectId",
-        as: "project",
-    }
-);
-
-PurchaseItem.hasMany(
-    PurchaseOrder,
-    {
-        foreignKey: "itemId",
-        as: "orders",
-    }
-);
-
-PurchaseOrder.belongsTo(
-    PurchaseItem,
-    {
-        foreignKey: "itemId",
-        as: "item",
-    }
-);
-
-Supplier.hasMany(
-    PurchaseOrder,
-    {
-        foreignKey: "supplierId",
-        as: "orders",
-    }
-);
-
-PurchaseOrder.belongsTo(
-    Supplier,
-    {
-        foreignKey: "supplierId",
-        as: "supplier",
-    }
-);
-
 module.exports = {
     User,
     Project,
