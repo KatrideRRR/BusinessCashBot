@@ -150,20 +150,6 @@ DailyClosure.belongsTo(User, {
 });
 
 /*
- * Project ↔ Debtor
- */
-
-Project.hasMany(Debtor, {
-    foreignKey: "projectId",
-    as: "debtors",
-});
-
-Debtor.belongsTo(Project, {
-    foreignKey: "projectId",
-    as: "project",
-});
-
-/*
  * Debtor ↔ DebtEntry
  */
 

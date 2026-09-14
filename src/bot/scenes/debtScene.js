@@ -16,13 +16,6 @@ const {
 } = require("../../models");
 
 const {
-    getProjectsForUser,
-    getProjectForUser,
-} = require(
-    "../../services/projectService"
-);
-
-const {
     parseMoneyToKopecks,
     formatKopecks,
 } = require("../../utils/money");
@@ -82,75 +75,15 @@ async function showHome(ctx) {
     );
 }
 
-async function showProjectSelection(
-    ctx,
-    action
-) {
-    const projects =
-        await getProjectsForUser(
-            ctx.state.user
-        );
-
-    if (
-        !projects ||
-        projects.length === 0
-    ) {
-        await ctx.reply(
-            "Нет доступных проектов."
-        );
-
-        return;
-    }
-
-    const buttons =
-        projects.map(
-            (project) => [
-                Markup.button.callback(
-                    `🏢 ${project.name}`,
-                    `debt_${action}_project_${project.id}`
-                ),
-            ]
-        );
-
-    buttons.push([
-        Markup.button.callback(
-            "⬅️ Назад",
-            "debt_home"
-        ),
-    ]);
-
-    await ctx.reply(
-        "Выберите проект:",
-        Markup.inlineKeyboard(
-            buttons
-        )
-    );
-}
-
-async function getDebtorForUser(
-    ctx,
+async function getDebtor(
     debtorId
 ) {
-    const debtor =
-        await Debtor.findByPk(
-            debtorId
-        );
-
-    if (!debtor) {
-        return null;
-    }
-
-    const project =
-        await getProjectForUser(
-            debtor.projectId,
-            ctx.state.user
-        );
-
-    if (!project) {
-        return null;
-    }
-
-    return debtor;
+    return Debtor.findOne({
+        where: {
+            id: debtorId,
+            isActive: true,
+        },
+    });
 }
 
 async function saveDebt(
@@ -202,9 +135,6 @@ async function saveDebt(
                     debtor =
                         await Debtor.create(
                             {
-                                projectId:
-                                ctx.scene.state
-                                    .projectId,
 
                                 name:
                                 ctx.scene.state
@@ -515,49 +445,9 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
-        await showProjectSelection(
-            ctx,
-            "add"
-        );
-    }
-);
-
-debtScene.action(
-    /^debt_add_project_(\d+)$/,
-    async (ctx) => {
-        await ctx.answerCbQuery();
-
-        const projectId =
-            Number(
-                ctx.match[1]
-            );
-
-        const project =
-            await getProjectForUser(
-                projectId,
-                ctx.state.user
-            );
-
-        if (!project) {
-            await ctx.reply(
-                "Проект недоступен."
-            );
-
-            return;
-        }
-
-        ctx.scene.state.projectId =
-            project.id;
-
-        ctx.scene.state.projectName =
-            project.name;
-
         const debtors =
             await Debtor.findAll({
                 where: {
-                    projectId:
-                    project.id,
-
                     isActive:
                         true,
                 },
@@ -572,7 +462,8 @@ debtScene.action(
                 (debtor) => [
                     Markup.button.callback(
                         `${debtor.name} — ${formatKopecks(
-                            debtor.balanceKopecks
+                            debtor
+                                .balanceKopecks
                         )}`,
                         `debt_add_existing_${debtor.id}`
                     ),
@@ -594,8 +485,7 @@ debtScene.action(
         ]);
 
         await ctx.reply(
-            `🏢 ${project.name}\n\n` +
-            `Кому записать долг?`,
+            "Кому записать долг?",
             Markup.inlineKeyboard(
                 buttons
             )
@@ -609,11 +499,8 @@ debtScene.action(
         await ctx.answerCbQuery();
 
         const debtor =
-            await getDebtorForUser(
-                ctx,
-                Number(
-                    ctx.match[1]
-                )
+            await getDebtor(
+                debtorId
             );
 
         if (!debtor) {
@@ -677,42 +564,9 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
-        await showProjectSelection(
-            ctx,
-            "pay"
-        );
-    }
-);
-
-debtScene.action(
-    /^debt_pay_project_(\d+)$/,
-    async (ctx) => {
-        await ctx.answerCbQuery();
-
-        const projectId =
-            Number(
-                ctx.match[1]
-            );
-
-        const project =
-            await getProjectForUser(
-                projectId,
-                ctx.state.user
-            );
-
-        if (!project) {
-            return;
-        }
-
-        ctx.scene.state.projectId =
-            project.id;
-
         const debtors =
             await Debtor.findAll({
                 where: {
-                    projectId:
-                    project.id,
-
                     isActive:
                         true,
 
@@ -731,7 +585,7 @@ debtScene.action(
             debtors.length === 0
         ) {
             await ctx.reply(
-                "По этому проекту долгов нет."
+                "✅ Долгов нет."
             );
 
             return;
@@ -742,7 +596,8 @@ debtScene.action(
                 (debtor) => [
                     Markup.button.callback(
                         `${debtor.name} — ${formatKopecks(
-                            debtor.balanceKopecks
+                            debtor
+                                .balanceKopecks
                         )}`,
                         `debt_pay_debtor_${debtor.id}`
                     ),
@@ -771,11 +626,8 @@ debtScene.action(
         await ctx.answerCbQuery();
 
         const debtor =
-            await getDebtorForUser(
-                ctx,
-                Number(
-                    ctx.match[1]
-                )
+            await getDebtor(
+                debtorId
             );
 
         if (!debtor) {
@@ -820,11 +672,8 @@ debtScene.action(
         await ctx.answerCbQuery();
 
         const debtor =
-            await getDebtorForUser(
-                ctx,
-                Number(
-                    ctx.match[1]
-                )
+            await getDebtor(
+                debtorId
             );
 
         if (!debtor) {
@@ -861,11 +710,8 @@ debtScene.action(
         await ctx.answerCbQuery();
 
         const debtor =
-            await getDebtorForUser(
-                ctx,
-                Number(
-                    ctx.match[1]
-                )
+            await getDebtor(
+                debtorId
             );
 
         if (!debtor) {
@@ -886,11 +732,8 @@ debtScene.action(
         await ctx.answerCbQuery();
 
         const debtor =
-            await getDebtorForUser(
-                ctx,
-                Number(
-                    ctx.match[1]
-                )
+            await getDebtor(
+                debtorId
             );
 
         if (!debtor) {
@@ -927,35 +770,11 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
-        await showProjectSelection(
-            ctx,
-            "list"
-        );
-    }
-);
-
-debtScene.action(
-    /^debt_list_project_(\d+)$/,
-    async (ctx) => {
-        await ctx.answerCbQuery();
-
-        const project =
-            await getProjectForUser(
-                Number(
-                    ctx.match[1]
-                ),
-                ctx.state.user
-            );
-
-        if (!project) {
-            return;
-        }
-
         const debtors =
             await Debtor.findAll({
                 where: {
-                    projectId:
-                    project.id,
+                    isActive:
+                        true,
 
                     balanceKopecks: {
                         [Op.gt]:
@@ -975,15 +794,13 @@ debtScene.action(
             debtors.length === 0
         ) {
             await ctx.reply(
-                `🏢 ${project.name}\n\n` +
-                `✅ Долгов нет.`
+                "✅ Долгов нет."
             );
 
             return;
         }
 
-        let total =
-            0n;
+        let total = 0n;
 
         const buttons = [];
 
@@ -1000,7 +817,8 @@ debtScene.action(
             buttons.push([
                 Markup.button.callback(
                     `${debtor.name} — ${formatKopecks(
-                        debtor.balanceKopecks
+                        debtor
+                            .balanceKopecks
                     )}`,
                     `debt_view_${debtor.id}`
                 ),
@@ -1015,7 +833,6 @@ debtScene.action(
         ]);
 
         await ctx.reply(
-            `🏢 ${project.name}\n\n` +
             `👥 Должников: ${debtors.length}\n` +
             `💰 Всего должны: ${formatKopecks(
                 total
@@ -1033,11 +850,8 @@ debtScene.action(
         await ctx.answerCbQuery();
 
         const debtor =
-            await getDebtorForUser(
-                ctx,
-                Number(
-                    ctx.match[1]
-                )
+            await getDebtor(
+                debtorId
             );
 
         if (!debtor) {
@@ -1223,10 +1037,8 @@ debtScene.on(
             }
 
             const debtor =
-                await getDebtorForUser(
-                    ctx,
-                    ctx.scene.state
-                        .debtorId
+                await getDebtor(
+                    debtorId
                 );
 
             if (!debtor) {
