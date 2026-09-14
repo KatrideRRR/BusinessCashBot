@@ -12,6 +12,7 @@ const Supplier = require("./Supplier");
 const PurchaseItem = require("./PurchaseItem");
 const PurchaseOrder = require("./PurchaseOrder");
 const PurchaseOrderItem = require("./PurchaseOrderItem");
+const EvotorEvent = require("./EvotorEvent");
 
 /*
  * User ↔ ProjectUser
@@ -291,6 +292,34 @@ PurchaseOrderItem.belongsTo(
     }
 );
 
+/*
+ * Project ↔ EvotorEvent
+ */
+
+Project.hasMany(EvotorEvent, {
+    foreignKey: "projectId",
+    as: "evotorEvents",
+});
+
+EvotorEvent.belongsTo(Project, {
+    foreignKey: "projectId",
+    as: "project",
+});
+
+/*
+ * Transaction ↔ EvotorEvent
+ */
+
+Transaction.hasOne(EvotorEvent, {
+    foreignKey: "transactionId",
+    as: "evotorEvent",
+});
+
+EvotorEvent.belongsTo(Transaction, {
+    foreignKey: "transactionId",
+    as: "transaction",
+});
+
 module.exports = {
     User,
     Project,
@@ -306,4 +335,5 @@ module.exports = {
     PurchaseItem,
     PurchaseOrder,
     PurchaseOrderItem,
+    EvotorEvent,
 };

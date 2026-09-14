@@ -41,6 +41,20 @@ const Project = sequelize.define(
             field: "purchase_address",
         },
 
+        evotorStoreId: {
+            type: DataTypes.STRING(64),
+            allowNull: true,
+            unique: true,
+            field: "evotor_store_id",
+        },
+
+        evotorDeviceId: {
+            type: DataTypes.STRING(64),
+            allowNull: true,
+            unique: true,
+            field: "evotor_device_id",
+        },
+
         revenueMode: {
             type: DataTypes.ENUM(
                 "daily_close",
