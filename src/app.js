@@ -10,6 +10,10 @@ const {
     startIntegrationServer,
 } = require("./integrationServer");
 
+const {
+    startEvotorSync,
+} = require("./services/evotorService");
+
 async function startApp() {
     try {
         console.log(
@@ -29,6 +33,8 @@ async function startApp() {
         );
 
         startIntegrationServer();
+
+        startEvotorSync();
 
         const webhookEnabled =
             process.env

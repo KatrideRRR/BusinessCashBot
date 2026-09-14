@@ -229,6 +229,70 @@ async function getCampCardIncomeSummary(
     };
 }
 
+async function getTerminalIncomeSummary(
+    projectId,
+    dbTransaction = null
+) {
+    const paymentMethod =
+        await PaymentMethod.findOne({
+            where: {
+                projectId,
+                name: "Терминал",
+                isActive: true,
+            },
+
+            transaction:
+            dbTransaction,
+        });
+
+    if (!paymentMethod) {
+        return {
+            total: 0n,
+            paymentMethod: null,
+        };
+    }
+
+    const rows =
+        await Transaction.findAll({
+            where: {
+                projectId,
+
+                type:
+                    "income",
+
+                businessDate:
+                    getBusinessDate(),
+
+                paymentMethodId:
+                paymentMethod.id,
+
+                /*
+                 * Автоматические операции
+                 * Evotor имеют closureId = null.
+                 */
+                closureId:
+                    null,
+            },
+
+            transaction:
+            dbTransaction,
+        });
+
+    let total = 0n;
+
+    for (const row of rows) {
+        total +=
+            BigInt(
+                row.amountKopecks
+            );
+    }
+
+    return {
+        total,
+        paymentMethod,
+    };
+}
+
 async function renderDraft(
     ctx
 ) {
@@ -252,9 +316,20 @@ async function renderDraft(
             state.projectId
         );
 
+    const terminalIncome =
+        state.hasEvotor
+            ? await getTerminalIncomeSummary(
+                state.projectId
+            )
+            : {
+                total: 0n,
+                paymentMethod: null,
+            };
+
     const incomeTotal =
         manualIncomeTotal +
-        campCardIncome.total;
+        campCardIncome.total +
+        terminalIncome.total;
 
     const result =
         incomeTotal -
@@ -277,7 +352,8 @@ async function renderDraft(
             !state.lines ||
             state.lines.length === 0
         ) &&
-        campCardIncome.total === 0n
+        campCardIncome.total === 0n &&
+        terminalIncome.total === 0n
     ) {
         text +=
             `Пока не добавлены.\n`;
@@ -307,6 +383,16 @@ async function renderDraft(
                 `💳 Camp Card — ` +
                 `${formatKopecks(
                     campCardIncome.total
+                )}\n`;
+        }
+
+        if (
+            terminalIncome.total > 0n
+        ) {
+            text +=
+                `🏦 Терминал — ` +
+                `${formatKopecks(
+                    terminalIncome.total
                 )}\n`;
         }
     }
@@ -466,9 +552,21 @@ async function finalizeClosure(
                         dbTransaction
                     );
 
+                const terminalIncome =
+                    state.hasEvotor
+                        ? await getTerminalIncomeSummary(
+                            state.projectId,
+                            dbTransaction
+                        )
+                        : {
+                            total: 0n,
+                            paymentMethod: null,
+                        };
+
                 const totalIncome =
                     manualIncomeTotal +
-                    campCardIncome.total;
+                    campCardIncome.total +
+                    terminalIncome.total;
 
                 const result =
                     totalIncome -
@@ -808,6 +906,11 @@ closeDayScene.action(
         ctx.scene.state.projectName =
             project.name;
 
+        ctx.scene.state.hasEvotor =
+            Boolean(
+                project.evotorStoreId
+            );
+
         const previousClosure =
             await DailyClosure.findOne({
                 where: {
@@ -1008,9 +1111,28 @@ closeDayScene.action(
 
         const visibleMethods =
             methods.filter(
-                (method) =>
-                    method.name !==
-                    "Camp Card"
+                (method) => {
+                    if (
+                        method.name ===
+                        "Camp Card"
+                    ) {
+                        return false;
+                    }
+
+                    /*
+                     * Если у проекта подключён Evotor,
+                     * терминал приходит автоматически.
+                     */
+                    if (
+                        ctx.scene.state.hasEvotor &&
+                        method.name ===
+                        "Терминал"
+                    ) {
+                        return false;
+                    }
+
+                    return true;
+                }
             );
 
         const buttons =
@@ -1221,8 +1343,25 @@ closeDayScene.action(
          * Нулевая выручка тоже возможна,
          * но попросим подтверждение отдельно.
          */
+
+        const campCardIncome =
+            await getCampCardIncomeSummary(
+                ctx.scene.state.projectId
+            );
+
+        const terminalIncome =
+            ctx.scene.state.hasEvotor
+                ? await getTerminalIncomeSummary(
+                    ctx.scene.state.projectId
+                )
+                : {
+                    total: 0n,
+                };
+
         if (
-            lines.length === 0
+            lines.length === 0 &&
+            campCardIncome.total === 0n &&
+            terminalIncome.total === 0n
         ) {
             await ctx.reply(
                 "⚠️ Вы не добавили ни одного поступления.\n\n" +
