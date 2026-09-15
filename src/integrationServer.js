@@ -11,6 +11,12 @@ const {
     "./services/purchaseSmsService"
 );
 
+const {
+    recordCargoCampPayment,
+} = require(
+    "./services/cargoCampPaymentService"
+);
+
 function secretsEqual(a, b) {
     if (!a || !b) {
         return false;
@@ -97,6 +103,61 @@ function startIntegrationServer() {
             } catch (error) {
                 console.error(
                     "[CAMP CARD API]",
+                    error
+                );
+
+                return res
+                    .status(400)
+                    .json({
+                        ok: false,
+                        error:
+                        error.message,
+                    });
+            }
+        }
+    );
+
+    app.post(
+        "/cargocamp/payments",
+        async (req, res) => {
+            try {
+                const secret =
+                    req.get(
+                        "x-cargocamp-secret"
+                    );
+
+                if (
+                    !secretsEqual(
+                        secret,
+                        process.env
+                            .CARGOCAMP_API_SECRET
+                    )
+                ) {
+                    return res
+                        .status(401)
+                        .json({
+                            ok: false,
+                            error:
+                                "UNAUTHORIZED",
+                        });
+                }
+
+                const result =
+                    await recordCargoCampPayment(
+                        req.body
+                    );
+
+                return res.json({
+                    ok: true,
+
+                    duplicate:
+                        Boolean(
+                            result.duplicate
+                        ),
+                });
+            } catch (error) {
+                console.error(
+                    "[CARGOCAMP PAYMENT]",
                     error
                 );
 
