@@ -14,7 +14,6 @@ const {
     getIncomeByPaymentMethod,
     getIncomeByCategory,
     getExpenseByCategory,
-    getExpenseByCategoryAndSource,
     getClosureStatus,
 } = require(
     "../../services/reportService"
@@ -501,18 +500,11 @@ async function showProjectReport(
                 period.endDate
             ),
 
-            project
-                .trackTodayRevenueSource
-                ? getExpenseByCategoryAndSource(
-                    project.id,
-                    period.startDate,
-                    period.endDate
-                )
-                : getExpenseByCategory(
-                    project.id,
-                    period.startDate,
-                    period.endDate
-                ),
+            getExpenseByCategory(
+                project.id,
+                period.startDate,
+                period.endDate
+            ),
         ]);
 
     let text =
@@ -668,18 +660,84 @@ async function showProjectReport(
             );
 
         text +=
-            "\n💰 Из сегодняшней выручки\n";
+            "\n➖ РАСХОДЫ\n";
 
         if (
-            todayRevenueExpenses
-                .length === 0
+            expenseCategories.length === 0
         ) {
             text +=
-                "Нет расходов.\n";
+                "Расходов нет.\n";
         } else {
+            /*
+             * Дополнительно объединяем статьи
+             * с одинаковыми названиями.
+             *
+             * Это защитит даже от ситуации,
+             * если в БД случайно существуют
+             * две категории "Сметана"
+             * с разными id.
+             */
+            const expenseMap =
+                new Map();
+
             for (
                 const row
-                of todayRevenueExpenses
+                of expenseCategories
+                ) {
+                const normalizedName =
+                    String(
+                        row.name ||
+                        "Без статьи"
+                    )
+                        .trim()
+                        .toLocaleLowerCase(
+                            "ru-RU"
+                        );
+
+                const existing =
+                    expenseMap.get(
+                        normalizedName
+                    );
+
+                if (existing) {
+                    existing.amount +=
+                        BigInt(
+                            row.amount
+                        );
+                } else {
+                    expenseMap.set(
+                        normalizedName,
+                        {
+                            name:
+                                row.name ||
+                                "Без статьи",
+
+                            amount:
+                                BigInt(
+                                    row.amount
+                                ),
+                        }
+                    );
+                }
+            }
+
+            const mergedExpenses =
+                Array.from(
+                    expenseMap.values()
+                ).sort(
+                    (a, b) =>
+                        a.amount >
+                        b.amount
+                            ? -1
+                            : a.amount <
+                            b.amount
+                                ? 1
+                                : 0
+                );
+
+            for (
+                const row
+                of mergedExpenses
                 ) {
                 text +=
                     `${row.name} — ` +
@@ -690,63 +748,10 @@ async function showProjectReport(
         }
 
         text +=
-            "\n🏦 Из других денег\n";
-
-        if (
-            otherExpenses.length ===
-            0
-        ) {
-            text +=
-                "Нет расходов.\n";
-        } else {
-            for (
-                const row
-                of otherExpenses
-                ) {
-                text +=
-                    `${row.name} — ` +
-                    `${formatKopecks(
-                        row.amount
-                    )}\n`;
-            }
-        }
-
-        if (
-            unknownExpenses.length >
-            0
-        ) {
-            text +=
-                "\n⚪ Источник не указан\n";
-
-            for (
-                const row
-                of unknownExpenses
-                ) {
-                text +=
-                    `${row.name} — ` +
-                    `${formatKopecks(
-                        row.amount
-                    )}\n`;
-            }
-        }
-    } else {
-        for (
-            const row
-            of expenseCategories
-            ) {
-            text +=
-                `${row.name} — ` +
-                `${formatKopecks(
-                    row.amount
-                )}\n`;
-        }
-    }
-
-    text +=
-        `\nВсего расходов: ` +
-        `${formatKopecks(
-            totals.expense
-        )}`;
+            `\nВсего расходов: ` +
+            `${formatKopecks(
+                totals.expense
+            )}`;
 
     if (
         totals.income > 0n ||
