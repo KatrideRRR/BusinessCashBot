@@ -622,136 +622,98 @@ async function showProjectReport(
         text += "\n";
     }
     /*
- * Расходы
- */
-
+    * Расходы
+    *
+    * В отчётах источник денег не важен.
+    * Объединяем одинаковые статьи
+    * независимо от fund_source и categoryId.
+    */
     text +=
         "\n➖ РАСХОДЫ\n";
 
     if (
-        expenseCategories.length ===
-        0
+        expenseCategories.length === 0
     ) {
         text +=
             "Расходов нет.\n";
-    } else if (
-        project
-            .trackTodayRevenueSource
-    ) {
-        const todayRevenueExpenses =
-            expenseCategories.filter(
-                (row) =>
-                    row.source ===
-                    "today_revenue"
-            );
+    } else {
+        const expenseMap =
+            new Map();
 
-        const otherExpenses =
-            expenseCategories.filter(
-                (row) =>
-                    row.source ===
-                    "other"
-            );
+        for (
+            const row
+            of expenseCategories
+            ) {
+            const displayName =
+                String(
+                    row.name ||
+                    "Без статьи"
+                ).trim();
 
-        const unknownExpenses =
-            expenseCategories.filter(
-                (row) =>
-                    row.source ===
-                    "unknown"
-            );
-
-        text +=
-            "\n➖ РАСХОДЫ\n";
-
-        if (
-            expenseCategories.length === 0
-        ) {
-            text +=
-                "Расходов нет.\n";
-        } else {
-            /*
-             * Дополнительно объединяем статьи
-             * с одинаковыми названиями.
-             *
-             * Это защитит даже от ситуации,
-             * если в БД случайно существуют
-             * две категории "Сметана"
-             * с разными id.
-             */
-            const expenseMap =
-                new Map();
-
-            for (
-                const row
-                of expenseCategories
-                ) {
-                const normalizedName =
-                    String(
-                        row.name ||
-                        "Без статьи"
-                    )
-                        .trim()
-                        .toLocaleLowerCase(
-                            "ru-RU"
-                        );
-
-                const existing =
-                    expenseMap.get(
-                        normalizedName
+            const normalizedName =
+                displayName
+                    .toLocaleLowerCase(
+                        "ru-RU"
                     );
 
-                if (existing) {
-                    existing.amount +=
-                        BigInt(
-                            row.amount
-                        );
-                } else {
-                    expenseMap.set(
-                        normalizedName,
-                        {
-                            name:
-                                row.name ||
-                                "Без статьи",
-
-                            amount:
-                                BigInt(
-                                    row.amount
-                                ),
-                        }
-                    );
-                }
-            }
-
-            const mergedExpenses =
-                Array.from(
-                    expenseMap.values()
-                ).sort(
-                    (a, b) =>
-                        a.amount >
-                        b.amount
-                            ? -1
-                            : a.amount <
-                            b.amount
-                                ? 1
-                                : 0
+            const existing =
+                expenseMap.get(
+                    normalizedName
                 );
 
-            for (
-                const row
-                of mergedExpenses
-                ) {
-                text +=
-                    `${row.name} — ` +
-                    `${formatKopecks(
+            if (existing) {
+                existing.amount +=
+                    BigInt(
                         row.amount
-                    )}\n`;
+                    );
+            } else {
+                expenseMap.set(
+                    normalizedName,
+                    {
+                        name:
+                        displayName,
+
+                        amount:
+                            BigInt(
+                                row.amount
+                            ),
+                    }
+                );
             }
         }
 
-        text +=
-            `\nВсего расходов: ` +
-            `${formatKopecks(
-                totals.expense
-            )}`;
+        const mergedExpenses =
+            Array.from(
+                expenseMap.values()
+            ).sort(
+                (a, b) =>
+                    a.amount >
+                    b.amount
+                        ? -1
+                        : a.amount <
+                        b.amount
+                            ? 1
+                            : 0
+            );
+
+        for (
+            const row
+            of mergedExpenses
+            ) {
+            text +=
+                `${row.name} — ` +
+                `${formatKopecks(
+                    row.amount
+                )}\n`;
+        }
+    }
+
+    text +=
+        `\nВсего расходов: ` +
+        `${formatKopecks(
+            totals.expense
+        )}`;
+
 
     if (
         totals.income > 0n ||
