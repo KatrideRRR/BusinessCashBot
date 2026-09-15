@@ -498,6 +498,11 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
+        const debtorId =
+            Number(
+                ctx.match[1]
+            );
+
         const debtor =
             await getDebtor(
                 debtorId
@@ -625,6 +630,11 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
+        const debtorId =
+            Number(
+                ctx.match[1]
+            );
+
         const debtor =
             await getDebtor(
                 debtorId
@@ -671,6 +681,11 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
+        const debtorId =
+            Number(
+                ctx.match[1]
+            );
+
         const debtor =
             await getDebtor(
                 debtorId
@@ -709,6 +724,11 @@ debtScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
+        const debtorId =
+            Number(
+                ctx.match[1]
+            );
+
         const debtor =
             await getDebtor(
                 debtorId
@@ -730,6 +750,11 @@ debtScene.action(
     /^debt_pay_partial_(\d+)$/,
     async (ctx) => {
         await ctx.answerCbQuery();
+
+        const debtorId =
+            Number(
+                ctx.match[1]
+            );
 
         const debtor =
             await getDebtor(
@@ -848,6 +873,11 @@ debtScene.action(
     /^debt_view_(\d+)$/,
     async (ctx) => {
         await ctx.answerCbQuery();
+
+        const debtorId =
+            Number(
+                ctx.match[1]
+            );
 
         const debtor =
             await getDebtor(
@@ -1038,7 +1068,8 @@ debtScene.on(
 
             const debtor =
                 await getDebtor(
-                    debtorId
+                    ctx.scene.state
+                        .debtorId
                 );
 
             if (!debtor) {

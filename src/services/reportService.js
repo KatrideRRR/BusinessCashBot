@@ -18,7 +18,8 @@ const {
 async function getProjectTotals(
     projectId,
     startDate,
-    endDate
+    endDate,
+    revenueMode = null
 ) {
     const rows =
         await Transaction.findAll({
@@ -53,13 +54,10 @@ async function getProjectTotals(
             raw: true,
         });
 
-    let income = 0n;
+    let transactionIncome = 0n;
     let expense = 0n;
 
-    for (
-        const row
-        of rows
-        ) {
+    for (const row of rows) {
         const amount =
             BigInt(
                 row.total || 0
@@ -69,22 +67,173 @@ async function getProjectTotals(
             row.type ===
             "income"
         ) {
-            income = amount;
+            transactionIncome =
+                amount;
         }
 
         if (
             row.type ===
             "expense"
         ) {
-            expense = amount;
+            expense =
+                amount;
         }
     }
 
+    /*
+     * Прямые проекты вроде Rancho
+     * продолжают работать как раньше.
+     */
+    if (
+        revenueMode !==
+        "daily_close"
+    ) {
+        return {
+            income:
+            transactionIncome,
+
+            expense,
+
+            result:
+                transactionIncome -
+                expense,
+
+            revenueSpentFromClosedDays:
+                0n,
+        };
+    }
+
+    /*
+     * Для проектов с закрытием дня
+     * именно DailyClosure является
+     * итогом полной дневной выручки.
+     */
+    const closures =
+        await DailyClosure.findAll({
+            attributes: [
+                "businessDate",
+                "totalIncomeKopecks",
+                "totalExpenseKopecks",
+            ],
+
+            where: {
+                projectId,
+
+                businessDate: {
+                    [Op.between]: [
+                        startDate,
+                        endDate,
+                    ],
+                },
+
+                status:
+                    "closed",
+            },
+
+            raw: true,
+        });
+
+    const closedDates = [];
+
+    let closedIncome = 0n;
+
+    let revenueSpentFromClosedDays =
+        0n;
+
+    for (
+        const closure
+        of closures
+        ) {
+        closedDates.push(
+            String(
+                closure.businessDate
+            )
+        );
+
+        closedIncome +=
+            BigInt(
+                closure
+                    .totalIncomeKopecks ||
+                0
+            );
+
+        revenueSpentFromClosedDays +=
+            BigInt(
+                closure
+                    .totalExpenseKopecks ||
+                0
+            );
+    }
+
+    /*
+     * Если период включает ещё
+     * незакрытый сегодняшний день,
+     * его автоматические поступления
+     * тоже не теряем.
+     */
+    const businessDateWhere = {
+        [Op.between]: [
+            startDate,
+            endDate,
+        ],
+    };
+
+    if (
+        closedDates.length > 0
+    ) {
+        businessDateWhere[
+            Op.notIn
+            ] = closedDates;
+    }
+
+    const openIncomeRows =
+        await Transaction.findAll({
+            attributes: [
+                [
+                    fn(
+                        "SUM",
+                        col(
+                            "amount_kopecks"
+                        )
+                    ),
+                    "total",
+                ],
+            ],
+
+            where: {
+                projectId,
+
+                type:
+                    "income",
+
+                businessDate:
+                businessDateWhere,
+            },
+
+            raw: true,
+        });
+
+    const openIncome =
+        BigInt(
+            openIncomeRows[0]
+                ?.total ||
+            0
+        );
+
+    const income =
+        closedIncome +
+        openIncome;
+
     return {
         income,
+
         expense,
+
         result:
-            income - expense,
+            income -
+            expense,
+
+        revenueSpentFromClosedDays,
     };
 }
 

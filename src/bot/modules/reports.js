@@ -133,7 +133,8 @@ async function showPeriodReport(
             await getProjectTotals(
                 project.id,
                 period.startDate,
-                period.endDate
+                period.endDate,
+                project.revenueMode
             );
 
         totalIncome +=
@@ -266,7 +267,8 @@ async function showProjectReport(
             getProjectTotals(
                 project.id,
                 period.startDate,
-                period.endDate
+                period.endDate,
+                project.revenueMode
             ),
 
             getIncomeByPaymentMethod(
@@ -340,6 +342,19 @@ async function showProjectReport(
                             row.amount
                         )}\n`;
                 }
+            }
+
+            if (
+                totals
+                    .revenueSpentFromClosedDays >
+                0n
+            ) {
+                text +=
+                    `+ Потрачено из выручки — ` +
+                    `${formatKopecks(
+                        totals
+                            .revenueSpentFromClosedDays
+                    )}\n`;
             }
 
             text +=

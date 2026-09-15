@@ -293,6 +293,117 @@ async function getTerminalIncomeSummary(
     };
 }
 
+async function showIncomePaymentMethods(
+    ctx
+) {
+    const state =
+        ctx.scene.state;
+
+    /*
+     * Для CampFood / физических точек
+     * статья дохода всегда "Выручка".
+     */
+    const category =
+        await Category.findOne({
+            where: {
+                projectId:
+                state.projectId,
+
+                type:
+                    "income",
+
+                name:
+                    "Выручка",
+
+                isActive:
+                    true,
+            },
+        });
+
+    if (!category) {
+        await ctx.reply(
+            "Не найдена активная статья «Выручка»."
+        );
+
+        return;
+    }
+
+    state.selectedCategoryId =
+        category.id;
+
+    state.selectedCategoryName =
+        category.name;
+
+    if (
+        state.projectId !== 7
+    ) {
+        await ensureDefaultPaymentMethods(
+            state.projectId
+        );
+    }
+
+    const methods =
+        await PaymentMethod.findAll({
+            where: {
+                projectId:
+                state.projectId,
+
+                isActive:
+                    true,
+            },
+
+            order: [
+                ["id", "ASC"],
+            ],
+        });
+
+    const visibleMethods =
+        methods.filter(
+            (method) => {
+                if (
+                    method.name ===
+                    "Camp Card"
+                ) {
+                    return false;
+                }
+
+                if (
+                    state.hasEvotor &&
+                    method.name ===
+                    "Терминал"
+                ) {
+                    return false;
+                }
+
+                return true;
+            }
+        );
+
+    const buttons =
+        visibleMethods.map(
+            (method) => [
+                Markup.button.callback(
+                    method.name,
+                    `close_payment_${method.id}`
+                ),
+            ]
+        );
+
+    buttons.push([
+        Markup.button.callback(
+            "❌ Отмена",
+            "close_cancel"
+        ),
+    ]);
+
+    await ctx.reply(
+        "Как получены деньги?",
+        Markup.inlineKeyboard(
+            buttons
+        )
+    );
+}
+
 async function renderDraft(
     ctx
 ) {
@@ -326,19 +437,67 @@ async function renderDraft(
                 paymentMethod: null,
             };
 
-    const incomeTotal =
+    /*
+ * manual + terminal + Camp Card —
+ * сколько денег осталось/зафиксировано.
+ *
+ * Расходы из сегодняшней выручки
+ * уже были заработаны до того,
+ * как их потратили.
+ *
+ * Поэтому возвращаем их обратно
+ * в общую валовую выручку.
+ */
+    const recordedIncome =
         manualIncomeTotal +
         campCardIncome.total +
         terminalIncome.total;
 
-    const result =
-        incomeTotal -
+    const totalRevenue =
+        recordedIncome +
         expenses.total;
 
     let text =
         `✅ Закрытие дня\n\n` +
         `🏢 ${state.projectName}\n` +
         `📅 ${getBusinessDate()}\n\n`;
+
+    /*
+     * Расходы
+     */
+
+    text +=
+        `\n\n➖ РАСХОДЫ\n`;
+
+    if (
+        state.trackTodayRevenueSource
+    ) {
+        text +=
+            `\n\n➖ РАСХОДЫ ИЗ СЕГОДНЯШНЕЙ ВЫРУЧКИ\n`;
+
+        if (
+            expenses.rows.length === 0
+        ) {
+            text +=
+                `Нет.\n`;
+        } else {
+            expenses.rows.forEach(
+                (row) => {
+                    text +=
+                        `${row.name} — ` +
+                        `${formatKopecks(
+                            row.amount
+                        )}\n`;
+                }
+            );
+        }
+
+        text +=
+            `\nВсего расходов из выручки: ` +
+            `${formatKopecks(
+                expenses.total
+            )}`;
+    }
 
     /*
      * Доходы
@@ -367,8 +526,7 @@ async function renderDraft(
                 (line, index) => {
                     text +=
                         `${index + 1}. ` +
-                        `${line.categoryName} / ` +
-                        `${line.paymentMethodName} — ` +
+                        `${line.paymentMethodName} — `
                         `${formatKopecks(
                             line.amountKopecks
                         )}\n`;
@@ -398,47 +556,9 @@ async function renderDraft(
     }
 
     text +=
-        `\nВыручка: ` +
+        `\nОбщая выручка: ` +
         `${formatKopecks(
-            incomeTotal
-        )}`;
-
-    /*
-     * Расходы
-     */
-
-    text +=
-        `\n\n➖ РАСХОДЫ\n`;
-
-    if (
-        expenses.rows.length ===
-        0
-    ) {
-        text +=
-            `Сегодня расходов нет.\n`;
-    } else {
-        expenses.rows.forEach(
-            (row) => {
-                text +=
-                    `${row.name} — ` +
-                    `${formatKopecks(
-                        row.amount
-                    )}\n`;
-            }
-        );
-    }
-
-    text +=
-        `\nРасходы: ` +
-        `${formatKopecks(
-            expenses.total
-        )}`;
-
-    text +=
-        `\n\n──────────────\n` +
-        `Результат дня: ` +
-        `${formatKopecks(
-            result
+            totalRevenue
         )}`;
 
     const buttons = [
@@ -539,7 +659,6 @@ async function finalizeClosure(
             );
 
         let finalTotalIncome = 0n;
-        let finalResult = 0n;
 
         await sequelize.transaction(
             async (
@@ -563,20 +682,28 @@ async function finalizeClosure(
                             paymentMethod: null,
                         };
 
-                const totalIncome =
+                const recordedIncome =
                     manualIncomeTotal +
                     campCardIncome.total +
                     terminalIncome.total;
 
+                const totalIncome =
+                    recordedIncome +
+                    expenses.total;
+
+                /*
+                 * Поле пока оставляем в БД
+                 * для совместимости.
+                 *
+                 * Это сумма, оставшаяся после
+                 * расходов из сегодняшней выручки.
+                 */
                 const result =
                     totalIncome -
                     expenses.total;
 
                 finalTotalIncome =
                     totalIncome;
-
-                finalResult =
-                    result;
 
                 let closure;
 
@@ -717,20 +844,26 @@ async function finalizeClosure(
             }
         );
 
-        await ctx.reply(
+        let finalText =
             `✅ День закрыт\n\n` +
             `🏢 ${state.projectName}\n` +
             `📅 ${businessDate}\n\n` +
-            `💰 Выручка: ${formatKopecks(
+            `💰 Общая выручка: ${formatKopecks(
                 finalTotalIncome
-            )}\n` +
-            `➖ Расходы: ${formatKopecks(
-                expenses.total
-            )}\n` +
-            `──────────────\n` +
-            `📊 Результат: ${formatKopecks(
-                finalResult
-            )}`,
+            )}`;
+
+        if (
+            state.trackTodayRevenueSource
+        ) {
+            finalText +=
+                `\n➖ Расходы из сегодняшней выручки: ` +
+                `${formatKopecks(
+                    expenses.total
+                )}`;
+        }
+
+        await ctx.reply(
+            finalText,
             getMainMenu()
         );
 
@@ -911,6 +1044,11 @@ closeDayScene.action(
                 project.evotorStoreId
             );
 
+        ctx.scene.state.trackTodayRevenueSource =
+            Boolean(
+                project.trackTodayRevenueSource
+            );
+
         const previousClosure =
             await DailyClosure.findOne({
                 where: {
@@ -1001,6 +1139,24 @@ closeDayScene.action(
     async (ctx) => {
         await ctx.answerCbQuery();
 
+        /*
+         * Для физических точек
+         * не спрашиваем статью "Выручка".
+         */
+        if (
+            ctx.scene.state
+                .trackTodayRevenueSource
+        ) {
+            return showIncomePaymentMethods(
+                ctx
+            );
+        }
+
+        /*
+         * Для остальных проектов
+         * старую универсальную схему
+         * пока оставляем.
+         */
         const categories =
             await Category.findAll({
                 where: {
@@ -1008,8 +1164,11 @@ closeDayScene.action(
                     ctx.scene.state
                         .projectId,
 
-                    type: "income",
-                    isActive: true,
+                    type:
+                        "income",
+
+                    isActive:
+                        true,
                 },
 
                 order: [
@@ -1199,10 +1358,21 @@ closeDayScene.action(
         ctx.scene.state.awaiting =
             "income_amount";
 
+        const prompt =
+            ctx.scene.state
+                .trackTodayRevenueSource
+                ? (
+                    `💳 ${method.name}\n\n` +
+                    `Введите сумму:`
+                )
+                : (
+                    `💰 ${ctx.scene.state.selectedCategoryName}\n` +
+                    `💳 ${method.name}\n\n` +
+                    `Введите сумму:`
+                );
+
         await ctx.reply(
-            `💰 ${ctx.scene.state.selectedCategoryName}\n` +
-            `💳 ${method.name}\n\n` +
-            `Введите сумму:`,
+            prompt,
             Markup.keyboard([
                 ["❌ Отмена"],
             ]).resize()
@@ -1358,10 +1528,18 @@ closeDayScene.action(
                     total: 0n,
                 };
 
+        const expenses =
+            await getExpenseSummary(
+                ctx.scene.state.projectId,
+                ctx.scene.state
+                    .trackTodayRevenueSource
+            );
+
         if (
             lines.length === 0 &&
             campCardIncome.total === 0n &&
-            terminalIncome.total === 0n
+            terminalIncome.total === 0n &&
+            expenses.total === 0n
         ) {
             await ctx.reply(
                 "⚠️ Вы не добавили ни одного поступления.\n\n" +
