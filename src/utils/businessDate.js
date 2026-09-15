@@ -108,6 +108,24 @@ function getReportPeriod(
             };
         }
 
+        case "all": {
+            return {
+                startDate:
+                    "1970-01-01",
+
+                endDate:
+                    current.format(
+                        "YYYY-MM-DD"
+                    ),
+
+                title:
+                    "За всё время",
+
+                isAll:
+                    true,
+            };
+        }
+
         default:
             throw new Error(
                 `Неизвестный период: ${period}`
