@@ -560,19 +560,6 @@ async function showProjectReport(
                 }
             }
 
-            if (
-                totals
-                    .revenueSpentFromClosedDays >
-                0n
-            ) {
-                text +=
-                    `+ Потрачено из выручки — ` +
-                    `${formatKopecks(
-                        totals
-                            .revenueSpentFromClosedDays
-                    )}\n`;
-            }
-
             text +=
                 `\nВсего выручка: ` +
                 `${formatKopecks(
