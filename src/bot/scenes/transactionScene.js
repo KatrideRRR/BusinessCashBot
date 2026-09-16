@@ -74,6 +74,42 @@ async function askAmount(ctx) {
     );
 }
 
+async function getExpensePaymentMethod(
+    projectId
+) {
+    let method =
+        await PaymentMethod.findOne({
+            where: {
+                projectId,
+                name: "Без способа",
+            },
+        });
+
+    if (!method) {
+        method =
+            await PaymentMethod.create({
+                projectId,
+                name: "Без способа",
+                type: "other",
+
+                /*
+                 * Скрытый технический способ.
+                 * В пользовательских списках
+                 * его не показываем.
+                 */
+                isActive: false,
+            });
+    } else if (
+        method.isActive
+    ) {
+        await method.update({
+            isActive: false,
+        });
+    }
+
+    return method;
+}
+
 async function showConfirmation(
     ctx
 ) {
@@ -90,8 +126,15 @@ async function showConfirmation(
         `📌 ${state.categoryName}\n` +
         `💰 ${formatKopecks(
             state.amountKopecks
-        )}\n` +
-        `💳 ${state.paymentMethodName}`;
+        )}`;
+
+    if (
+        state.operationType ===
+        "income"
+    ) {
+        text +=
+            `\n💳 ${state.paymentMethodName}`;
+    }
 
     if (
         state.operationType ===
@@ -687,6 +730,85 @@ transactionScene.on(
             ctx.scene.state.awaiting =
                 null;
 
+            /*
+ * Для расходов способ оплаты
+ * пользователю больше не нужен.
+ *
+ * В БД используем скрытый
+ * технический способ
+ * "Без способа".
+ */
+            if (
+                ctx.scene.state
+                    .operationType ===
+                "expense"
+            ) {
+                const paymentMethod =
+                    await getExpensePaymentMethod(
+                        ctx.scene.state
+                            .projectId
+                    );
+
+                ctx.scene.state
+                    .paymentMethodId =
+                    paymentMethod.id;
+
+                ctx.scene.state
+                    .paymentMethodName =
+                    paymentMethod.name;
+
+                /*
+                 * CampFood и другие проекты,
+                 * где важно понять источник
+                 * денег для закрытия дня.
+                 */
+                if (
+                    ctx.scene.state
+                        .trackTodayRevenueSource
+                ) {
+                    await ctx.reply(
+                        "Из каких денег оплачен расход?",
+                        Markup.inlineKeyboard([
+                            [
+                                Markup.button.callback(
+                                    "💰 Из сегодняшней выручки",
+                                    "tx_source_today"
+                                ),
+                            ],
+                            [
+                                Markup.button.callback(
+                                    "🏦 Из других денег",
+                                    "tx_source_other"
+                                ),
+                            ],
+                            [
+                                Markup.button.callback(
+                                    "❌ Отмена",
+                                    "tx_cancel"
+                                ),
+                            ],
+                        ])
+                    );
+
+                    return;
+                }
+
+                /*
+                 * CargoCamp / Rancho:
+                 * никакого источника денег
+                 * вообще не фиксируем.
+                 */
+                ctx.scene.state.fundSource =
+                    null;
+
+                ctx.scene.state.comment =
+                    null;
+
+                return showConfirmation(
+                    ctx
+                );
+            }
+
             await ensureDefaultPaymentMethods(
                 ctx.scene.state
                     .projectId
@@ -897,16 +1019,11 @@ transactionScene.action(
 
                 fundSource:
                     state.operationType ===
-                    "expense"
+                    "expense" &&
+                    state.trackTodayRevenueSource
                         ? (
-                            state
-                                .trackTodayRevenueSource
-                                ? (
-                                    state
-                                        .fundSource ||
-                                    null
-                                )
-                                : "other"
+                            state.fundSource ||
+                            null
                         )
                         : null,
 
@@ -922,14 +1039,24 @@ transactionScene.action(
                 ? "+"
                 : "−";
 
-        await ctx.editMessageText(
+        let savedText =
             `✅ Операция сохранена\n\n` +
             `${sign} ${formatKopecks(
                 transaction.amountKopecks
             )}\n` +
             `🏢 ${state.projectName}\n` +
-            `📌 ${state.categoryName}\n` +
-            `💳 ${state.paymentMethodName}`
+            `📌 ${state.categoryName}`;
+
+        if (
+            state.operationType ===
+            "income"
+        ) {
+            savedText +=
+                `\n💳 ${state.paymentMethodName}`;
+        }
+
+        await ctx.editMessageText(
+            savedText
         );
 
         await ctx.reply(
