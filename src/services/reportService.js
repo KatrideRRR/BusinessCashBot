@@ -312,6 +312,10 @@ async function getIncomeByPaymentMethod(
                     ),
             })
         )
+        .filter(
+            (row) =>
+                row.amount !== 0n
+        )
         .sort(
             (a, b) =>
                 a.amount >
@@ -510,6 +514,10 @@ async function getByCategory(
                         0
                     ),
             })
+        )
+        .filter(
+            (row) =>
+                row.amount !== 0n
         )
         .sort(
             (a, b) =>

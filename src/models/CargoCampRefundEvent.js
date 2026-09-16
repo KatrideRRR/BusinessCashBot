@@ -28,8 +28,7 @@ const CargoCampRefundEvent =
             transactionId: {
                 type:
                 DataTypes.INTEGER.UNSIGNED,
-                allowNull: false,
-                unique: true,
+                allowNull: true,
                 field:
                     "transaction_id",
             },

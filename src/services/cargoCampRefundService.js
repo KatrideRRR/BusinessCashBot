@@ -1,55 +1,12 @@
-const dayjs =
-    require("dayjs");
-
-const utc =
-    require("dayjs/plugin/utc");
-
-const timezone =
-    require("dayjs/plugin/timezone");
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
-
 const sequelize =
     require("../config/database");
 
 const {
-    User,
-    Category,
-    PaymentMethod,
     Transaction,
     DailyClosure,
     CargoCampPaymentEvent,
     CargoCampRefundEvent,
 } = require("../models");
-
-function getBusinessDate(
-    occurredAt
-) {
-    const tz =
-        process.env.APP_TIMEZONE ||
-        "Europe/Moscow";
-
-    return dayjs(
-        occurredAt
-    )
-        .tz(tz)
-        .format("YYYY-MM-DD");
-}
-
-function getProviderName(
-    provider
-) {
-    if (provider === "yookassa") {
-        return "ЮKassa";
-    }
-
-    if (provider === "tbank") {
-        return "Т-Банк";
-    }
-
-    return null;
-}
 
 async function recordCargoCampRefund(
     data
@@ -57,10 +14,9 @@ async function recordCargoCampRefund(
     const provider =
         String(
             data.provider || ""
-        ).toLowerCase();
-
-    const providerName =
-        getProviderName(provider);
+        )
+            .trim()
+            .toLowerCase();
 
     const paymentId =
         String(
@@ -83,7 +39,10 @@ async function recordCargoCampRefund(
             : new Date();
 
     if (
-        !providerName ||
+        ![
+            "yookassa",
+            "tbank",
+        ].includes(provider) ||
         !paymentId ||
         !refundId ||
         Number.isNaN(
@@ -102,6 +61,10 @@ async function recordCargoCampRefund(
             const eventId =
                 `${provider}:refund:${refundId}`;
 
+            /*
+             * Один и тот же webhook
+             * дважды не применяем.
+             */
             const existing =
                 await CargoCampRefundEvent.findOne({
                     where: {
@@ -119,14 +82,11 @@ async function recordCargoCampRefund(
             }
 
             /*
-             * Ищем именно первоначальную
-             * выручку CargoCamp.
-             *
-             * Если её нет, значит это,
-             * например, возврат гарантии,
-             * привязки карты и т.п.
+             * Ищем исходный платёж,
+             * который ранее был записан
+             * как выручка CargoCamp.
              */
-            const original =
+            const originalPayment =
                 await CargoCampPaymentEvent.findOne({
                     where: {
                         provider,
@@ -143,17 +103,56 @@ async function recordCargoCampRefund(
                         .LOCK.UPDATE,
                 });
 
-            if (!original) {
+            /*
+             * Например, возврат гарантии
+             * или другого платежа, который
+             * вообще не был выручкой
+             * BusinessCash.
+             */
+            if (!originalPayment) {
                 return {
                     ignored: true,
                 };
             }
 
+            const originalTransaction =
+                await Transaction.findOne({
+                    where: {
+                        id:
+                        originalPayment
+                            .transactionId,
+
+                        projectId:
+                        originalPayment
+                            .projectId,
+
+                        type:
+                            "income",
+                    },
+
+                    transaction:
+                    dbTransaction,
+
+                    lock:
+                    dbTransaction
+                        .LOCK.UPDATE,
+                });
+
+            if (!originalTransaction) {
+                throw new Error(
+                    "ORIGINAL_TRANSACTION_NOT_FOUND"
+                );
+            }
+
+            /*
+             * Сколько уже возвращали
+             * по этому платежу раньше.
+             */
             const previousRefunds =
                 await CargoCampRefundEvent.findAll({
                     where: {
                         originalPaymentEventId:
-                        original.id,
+                        originalPayment.id,
                     },
 
                     attributes: [
@@ -178,215 +177,99 @@ async function recordCargoCampRefund(
                     );
             }
 
+            /*
+             * В CargoCampPaymentEvent
+             * хранится исходная сумма.
+             * Её не меняем — это наша
+             * техническая история.
+             */
             const originalAmount =
                 BigInt(
-                    original.amountKopecks
+                    originalPayment
+                        .amountKopecks
                 );
 
             const remaining =
                 originalAmount -
                 alreadyRefunded;
 
-            let amount;
+            let refundAmount;
 
             if (fullRefund) {
-                amount =
+                refundAmount =
                     remaining;
             } else {
                 try {
-                    amount =
+                    refundAmount =
                         BigInt(
                             data.amountKopecks
                         );
                 } catch {
-                    amount =
+                    refundAmount =
                         0n;
                 }
             }
 
-            if (amount <= 0n) {
+            if (
+                refundAmount <= 0n
+            ) {
                 return {
                     duplicate: true,
                 };
             }
 
-            if (amount > remaining) {
+            if (
+                refundAmount >
+                remaining
+            ) {
                 throw new Error(
                     "REFUND_EXCEEDS_PAYMENT"
                 );
             }
 
-            const owner =
-                await User.findOne({
-                    where: {
-                        telegramId:
-                        process.env
-                            .OWNER_TELEGRAM_ID,
-                    },
+            /*
+             * Главное изменение:
+             *
+             * возврат НЕ расход.
+             *
+             * Просто уменьшаем исходную
+             * выручку.
+             */
+            const newNetIncome =
+                remaining -
+                refundAmount;
 
+            await originalTransaction.update(
+                {
+                    amountKopecks:
+                        newNetIncome.toString(),
+                },
+                {
                     transaction:
                     dbTransaction,
-                });
+                }
+            );
 
-            if (!owner) {
-                throw new Error(
-                    "OWNER_NOT_FOUND"
-                );
-            }
-
-            let category =
-                await Category.findOne({
-                    where: {
-                        projectId:
-                        original.projectId,
-
-                        type:
-                            "expense",
-
-                        name:
-                            "Возврат клиенту",
-                    },
-
-                    transaction:
-                    dbTransaction,
-                });
-
-            if (!category) {
-                category =
-                    await Category.create(
-                        {
-                            projectId:
-                            original.projectId,
-
-                            type:
-                                "expense",
-
-                            name:
-                                "Возврат клиенту",
-
-                            isActive:
-                                true,
-
-                            createdBy:
-                            owner.id,
-                        },
-                        {
-                            transaction:
-                            dbTransaction,
-                        }
-                    );
-            } else if (
-                !category.isActive
-            ) {
-                await category.update(
-                    {
-                        isActive:
-                            true,
-                    },
-                    {
-                        transaction:
-                        dbTransaction,
-                    }
-                );
-            }
-
-            let paymentMethod =
-                await PaymentMethod.findOne({
-                    where: {
-                        projectId:
-                        original.projectId,
-
-                        name:
-                        providerName,
-                    },
-
-                    transaction:
-                    dbTransaction,
-                });
-
-            if (!paymentMethod) {
-                paymentMethod =
-                    await PaymentMethod.create(
-                        {
-                            projectId:
-                            original.projectId,
-
-                            name:
-                            providerName,
-
-                            type:
-                                "bank_account",
-
-                            isActive:
-                                true,
-                        },
-                        {
-                            transaction:
-                            dbTransaction,
-                        }
-                    );
-            }
-
-            const businessDate =
-                getBusinessDate(
-                    occurredAt
-                );
-
-            const cashTransaction =
-                await Transaction.create(
-                    {
-                        projectId:
-                        original.projectId,
-
-                        type:
-                            "expense",
-
-                        categoryId:
-                        category.id,
-
-                        paymentMethodId:
-                        paymentMethod.id,
-
-                        amountKopecks:
-                            amount.toString(),
-
-                        businessDate,
-
-                        closureId:
-                            null,
-
-                        /*
-                         * У CargoCamp никакого
-                         * источника "сегодняшняя
-                         * выручка" нет.
-                         */
-                        fundSource:
-                            null,
-
-                        comment:
-                            `CargoCamp refund ${provider} ${paymentId} ${refundId}`,
-
-                        createdBy:
-                        owner.id,
-                    },
-                    {
-                        transaction:
-                        dbTransaction,
-                    }
-                );
-
+            /*
+             * Refund сохраняем отдельно
+             * только для истории,
+             * идемпотентности и аудита.
+             *
+             * Новой Transaction здесь
+             * больше НЕ создаём.
+             */
             await CargoCampRefundEvent.create(
                 {
                     eventId,
 
                     transactionId:
-                    cashTransaction.id,
+                        null,
 
                     originalPaymentEventId:
-                    original.id,
+                    originalPayment.id,
 
                     projectId:
-                    original.projectId,
+                    originalPayment.projectId,
 
                     provider,
 
@@ -397,7 +280,7 @@ async function recordCargoCampRefund(
                     refundId,
 
                     amountKopecks:
-                        amount.toString(),
+                        refundAmount.toString(),
 
                     occurredAt,
                 },
@@ -408,18 +291,24 @@ async function recordCargoCampRefund(
             );
 
             /*
-             * На будущее:
-             * если финансовый день уже
-             * закрыт, поздний возврат
-             * корректирует его дату.
+             * Если финансовый день
+             * когда-нибудь уже будет
+             * закрыт, уменьшаем и его
+             * выручку.
+             *
+             * Возврат относится именно
+             * к исходному доходу.
              */
             const closure =
                 await DailyClosure.findOne({
                     where: {
                         projectId:
-                        original.projectId,
+                        originalPayment
+                            .projectId,
 
-                        businessDate,
+                        businessDate:
+                        originalTransaction
+                            .businessDate,
 
                         status:
                             "closed",
@@ -434,10 +323,10 @@ async function recordCargoCampRefund(
                 });
 
             if (closure) {
-                const oldExpense =
+                const oldIncome =
                     BigInt(
                         closure
-                            .totalExpenseKopecks ||
+                            .totalIncomeKopecks ||
                         0
                     );
 
@@ -448,18 +337,22 @@ async function recordCargoCampRefund(
                         0
                     );
 
+                const newIncome =
+                    oldIncome >=
+                    refundAmount
+                        ? oldIncome -
+                        refundAmount
+                        : 0n;
+
                 await closure.update(
                     {
-                        totalExpenseKopecks:
-                            (
-                                oldExpense +
-                                amount
-                            ).toString(),
+                        totalIncomeKopecks:
+                            newIncome.toString(),
 
                         resultKopecks:
                             (
                                 oldResult -
-                                amount
+                                refundAmount
                             ).toString(),
                     },
                     {
@@ -472,12 +365,16 @@ async function recordCargoCampRefund(
             console.log(
                 `↩️ CargoCamp refund: ` +
                 `${provider} ` +
-                `${amount.toString()} коп.`
+                `${refundAmount.toString()} коп. ` +
+                `→ остаток ${newNetIncome.toString()} коп.`
             );
 
             return {
                 duplicate: false,
                 ignored: false,
+
+                remainingKopecks:
+                    newNetIncome.toString(),
             };
         }
     );
