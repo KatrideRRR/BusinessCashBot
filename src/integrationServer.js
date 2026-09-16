@@ -17,6 +17,12 @@ const {
     "./services/cargoCampPaymentService"
 );
 
+const {
+    recordCargoCampRefund,
+} = require(
+    "./services/cargoCampRefundService"
+);
+
 function secretsEqual(a, b) {
     if (!a || !b) {
         return false;
@@ -158,6 +164,66 @@ function startIntegrationServer() {
             } catch (error) {
                 console.error(
                     "[CARGOCAMP PAYMENT]",
+                    error
+                );
+
+                return res
+                    .status(400)
+                    .json({
+                        ok: false,
+                        error:
+                        error.message,
+                    });
+            }
+        }
+    );
+
+    app.post(
+        "/cargocamp/refunds",
+        async (req, res) => {
+            try {
+                const secret =
+                    req.get(
+                        "x-cargocamp-secret"
+                    );
+
+                if (
+                    !secretsEqual(
+                        secret,
+                        process.env
+                            .CARGOCAMP_API_SECRET
+                    )
+                ) {
+                    return res
+                        .status(401)
+                        .json({
+                            ok: false,
+                            error:
+                                "UNAUTHORIZED",
+                        });
+                }
+
+                const result =
+                    await recordCargoCampRefund(
+                        req.body
+                    );
+
+                return res.json({
+                    ok: true,
+
+                    duplicate:
+                        Boolean(
+                            result.duplicate
+                        ),
+
+                    ignored:
+                        Boolean(
+                            result.ignored
+                        ),
+                });
+            } catch (error) {
+                console.error(
+                    "[CARGOCAMP REFUND]",
                     error
                 );
 

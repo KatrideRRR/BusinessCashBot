@@ -994,7 +994,6 @@ closeDayScene.action(
 
             return ctx.scene.leave();
         }
-
         if (
             !project ||
             project.revenueMode !==

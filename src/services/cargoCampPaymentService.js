@@ -263,6 +263,20 @@ async function recordCargoCampPayment(
                         );
                 }
 
+                else if (
+                    !category.isActive
+                ) {
+                    await category.update(
+                        {
+                            isActive: true,
+                        },
+                        {
+                            transaction:
+                            dbTransaction,
+                        }
+                    );
+                }
+
                 let paymentMethod =
                     await PaymentMethod.findOne(
                         {

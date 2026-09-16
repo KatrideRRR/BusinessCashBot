@@ -11,12 +11,6 @@ const {
 } = require("./integrationServer");
 
 const {
-    startCargoCampAutoClose,
-} = require(
-    "./services/cargoCampAutoCloseService"
-);
-
-const {
     startEvotorSync,
 } = require("./services/evotorService");
 
@@ -41,8 +35,6 @@ async function startApp() {
         startIntegrationServer();
 
         startEvotorSync();
-
-        startCargoCampAutoClose();
 
         const webhookEnabled =
             process.env

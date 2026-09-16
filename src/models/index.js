@@ -14,6 +14,7 @@ const PurchaseOrder = require("./PurchaseOrder");
 const PurchaseOrderItem = require("./PurchaseOrderItem");
 const EvotorEvent = require("./EvotorEvent");
 const CargoCampPaymentEvent = require("./CargoCampPaymentEvent");
+const CargoCampRefundEvent = require("./CargoCampRefundEvent");
 
 /*
  * User ↔ ProjectUser
@@ -370,4 +371,5 @@ module.exports = {
     PurchaseOrderItem,
     EvotorEvent,
     CargoCampPaymentEvent,
+    CargoCampRefundEvent,
 };
