@@ -900,18 +900,27 @@ closeDayScene.enter(
          * Ферму/direct-проекты
          * здесь не показываем.
          */
+        const cargoCampProjectId =
+            Number(
+                process.env
+                    .CARGOCAMP_PROJECT_ID ||
+                7
+            );
+
         projects =
             projects.filter(
                 (project) =>
                     project.revenueMode ===
-                    "daily_close"
+                    "daily_close" &&
+                    Number(project.id) !==
+                    cargoCampProjectId
             );
 
         if (
             projects.length === 0
         ) {
             await ctx.reply(
-                "Нет проектов, которые требуют закрытия дня.",
+                "Нет проектов, которые требуют ручного закрытия дня.",
                 getMainMenu()
             );
 
@@ -966,6 +975,25 @@ closeDayScene.action(
                 projectId,
                 ctx.state.user
             );
+
+        const cargoCampProjectId =
+            Number(
+                process.env
+                    .CARGOCAMP_PROJECT_ID ||
+                7
+            );
+
+        if (
+            Number(projectId) ===
+            cargoCampProjectId
+        ) {
+            await ctx.reply(
+                "🤖 CargoCamp закрывается автоматически каждый день в 00:05.",
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
 
         if (
             !project ||
