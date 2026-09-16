@@ -526,7 +526,7 @@ async function renderDraft(
                 (line, index) => {
                     text +=
                         `${index + 1}. ` +
-                        `${line.paymentMethodName} — `
+                        `${line.paymentMethodName} — ` +
                         `${formatKopecks(
                             line.amountKopecks
                         )}\n`;
