@@ -110,17 +110,7 @@ async function getProjectTotals(
         });
 
     let transactionIncome = 0n;
-    let expense = 0n;
-
-    const allocatedExpense =
-        await getAllocatedExpenseTotal(
-            projectId,
-            startDate,
-            endDate
-        );
-
-    expense +=
-        allocatedExpense;
+    let directExpense = 0n;
 
     for (const row of rows) {
         const amount =
@@ -140,10 +130,21 @@ async function getProjectTotals(
             row.type ===
             "expense"
         ) {
-            expense =
+            directExpense =
                 amount;
         }
     }
+
+    const allocatedExpense =
+        await getAllocatedExpenseTotal(
+            projectId,
+            startDate,
+            endDate
+        );
+
+    const expense =
+        directExpense +
+        allocatedExpense;
 
     /*
      * Прямые проекты вроде Rancho
