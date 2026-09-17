@@ -349,36 +349,47 @@ async function allocateCampFoodExpensesForDate(
 }
 
 async function invalidateCampFoodAllocationForDate(
-    businessDate
+    businessDate,
+    externalTransaction = null
 ) {
-    const expenses =
-        await CampFoodSharedExpense.findAll({
-            where: {
-                businessDate,
-            },
-
-            attributes: [
-                "id",
-            ],
-        });
-
-    if (
-        expenses.length ===
-        0
-    ) {
-        return;
-    }
-
-    const ids =
-        expenses.map(
-            (expense) =>
-                expense.id
-        );
-
-    await sequelize.transaction(
+    const execute =
         async (
             dbTransaction
         ) => {
+            const expenses =
+                await CampFoodSharedExpense.findAll({
+                    where: {
+                        businessDate,
+                    },
+
+                    attributes: [
+                        "id",
+                    ],
+
+                    transaction:
+                    dbTransaction,
+
+                    lock:
+                    dbTransaction
+                        .LOCK.UPDATE,
+                });
+
+            if (
+                expenses.length ===
+                0
+            ) {
+                return {
+                    invalidated:
+                        false,
+                };
+            }
+
+            const ids =
+                expenses.map(
+                    (expense) =>
+                        expense.id
+                );
+
             await CampFoodExpenseAllocation.destroy({
                 where: {
                     sharedExpenseId: {
@@ -408,10 +419,28 @@ async function invalidateCampFoodAllocationForDate(
                     dbTransaction,
                 }
             );
-        }
+
+            return {
+                invalidated:
+                    true,
+            };
+        };
+
+    /*
+     * При переоткрытии дня
+     * используем ту же транзакцию,
+     * что и DailyClosure.
+     */
+    if (externalTransaction) {
+        return execute(
+            externalTransaction
+        );
+    }
+
+    return sequelize.transaction(
+        execute
     );
 }
-
 module.exports = {
     allocateCampFoodExpensesForDate,
     invalidateCampFoodAllocationForDate,

@@ -16,6 +16,7 @@ const {
 
 const {
     allocateCampFoodExpensesForDate,
+    invalidateCampFoodAllocationForDate,
 } = require(
     "../../services/campFoodAllocationService"
 );
@@ -1081,7 +1082,7 @@ closeDayScene.action(
             cargoCampProjectId
         ) {
             await ctx.reply(
-                "🤖 CargoCamp закрывается автоматически каждый день в 00:05.",
+                "CargoCamp не закрывается вручную через кассовую смену.",
                 getMainMenu()
             );
 
@@ -1115,19 +1116,34 @@ closeDayScene.action(
             await ctx.reply(
                 `✅ ${project.name}\n\n` +
                 `Этот день уже закрыт.\n\n` +
-                `Выручка: ${formatKopecks(
+                `💰 Выручка: ${formatKopecks(
                     existing.totalIncomeKopecks
                 )}\n` +
-                `Расходы: ${formatKopecks(
+                `➖ Расходы из кассы: ${formatKopecks(
                     existing.totalExpenseKopecks
                 )}\n` +
-                `Результат: ${formatKopecks(
+                `📊 Остаток: ${formatKopecks(
                     existing.resultKopecks
-                )}`,
-                getMainMenu()
+                )}\n\n` +
+                `Если после закрытия была ещё продажа, ` +
+                `день можно переоткрыть.`,
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "🔓 Переоткрыть день",
+                            `close_reopen_${existing.id}`
+                        ),
+                    ],
+                    [
+                        Markup.button.callback(
+                            "❌ Отмена",
+                            "close_cancel"
+                        ),
+                    ],
+                ])
             );
 
-            return ctx.scene.leave();
+            return;
         }
 
         const incomeCategories =
@@ -1245,6 +1261,184 @@ closeDayScene.action(
             );
 
         await renderDraft(ctx);
+    }
+);
+
+/*
+ * =========================
+ * REOPEN DAY
+ * =========================
+ */
+
+closeDayScene.action(
+    /^close_reopen_(\d+)$/,
+    async (ctx) => {
+        await ctx.answerCbQuery();
+
+        const closureId =
+            Number(
+                ctx.match[1]
+            );
+
+        const businessDate =
+            getBusinessDate();
+
+        /*
+         * Сначала читаем закрытие,
+         * чтобы проверить доступ
+         * пользователя к проекту.
+         */
+        const closure =
+            await DailyClosure.findByPk(
+                closureId
+            );
+
+        if (
+            !closure ||
+            closure.status !==
+            "closed" ||
+            String(
+                closure.businessDate
+            ) !== businessDate
+        ) {
+            await ctx.reply(
+                "Этот день уже нельзя переоткрыть.",
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
+
+        const project =
+            await getProjectForUser(
+                Number(
+                    closure.projectId
+                ),
+                ctx.state.user
+            );
+
+        if (
+            !project ||
+            project.revenueMode !==
+            "daily_close"
+        ) {
+            await ctx.reply(
+                "Нет доступа к этой точке.",
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
+
+        try {
+            const reopened =
+                await sequelize.transaction(
+                    async (
+                        dbTransaction
+                    ) => {
+                        /*
+                         * Повторно блокируем запись,
+                         * чтобы два нажатия одновременно
+                         * не переоткрыли её дважды.
+                         */
+                        const lockedClosure =
+                            await DailyClosure.findOne({
+                                where: {
+                                    id:
+                                    closureId,
+
+                                    projectId:
+                                    project.id,
+
+                                    businessDate,
+
+                                    status:
+                                        "closed",
+                                },
+
+                                transaction:
+                                dbTransaction,
+
+                                lock:
+                                dbTransaction
+                                    .LOCK.UPDATE,
+                            });
+
+                        if (
+                            !lockedClosure
+                        ) {
+                            return false;
+                        }
+
+                        await lockedClosure.update(
+                            {
+                                status:
+                                    "reopened",
+                            },
+                            {
+                                transaction:
+                                dbTransaction,
+                            }
+                        );
+
+                        /*
+                         * Если это CampFood,
+                         * старое распределение
+                         * общего расхода больше
+                         * нельзя считать актуальным.
+                         */
+                        if (
+                            getCampFoodProjectIds()
+                                .includes(
+                                    Number(
+                                        project.id
+                                    )
+                                )
+                        ) {
+                            await invalidateCampFoodAllocationForDate(
+                                businessDate,
+                                dbTransaction
+                            );
+                        }
+
+                        return true;
+                    }
+                );
+
+            if (!reopened) {
+                await ctx.reply(
+                    "День уже был переоткрыт.",
+                    getMainMenu()
+                );
+
+                return ctx.scene.leave();
+            }
+
+            await ctx.reply(
+                `🔓 День переоткрыт\n\n` +
+                `🏢 ${project.name}\n` +
+                `📅 ${businessDate}\n\n` +
+                `Старая выручка сохранена.\n\n` +
+                `Теперь снова нажмите «✅ Закрыть день», ` +
+                `выберите эту точку и добавьте новое поступление.`,
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+
+        } catch (error) {
+            console.error(
+                "Ошибка переоткрытия дня:",
+                error
+            );
+
+            await ctx.reply(
+                "❌ Не удалось переоткрыть день.",
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
     }
 );
 
