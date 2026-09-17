@@ -1388,11 +1388,26 @@ transactionScene.on(
 transactionScene.action(
     "tx_confirm",
     async (ctx) => {
-        await ctx.answerCbQuery();
-
         const state =
             ctx.scene.state;
 
+        /*
+         * Защита от двойного нажатия
+         * "Сохранить".
+         */
+        if (state.saving) {
+            await ctx.answerCbQuery(
+                "Операция уже сохраняется"
+            );
+
+            return;
+        }
+
+        state.saving = true;
+
+        await ctx.answerCbQuery();
+
+        try {
         if (
             state.isCampFoodSharedExpense
         ) {
@@ -1465,6 +1480,12 @@ transactionScene.action(
             return ctx.scene.leave();
         }
 
+        } catch (error) {
+            state.saving = false;
+
+            throw error;
+        }
+
         const transaction =
             await Transaction.create({
                 projectId:
@@ -1523,17 +1544,37 @@ transactionScene.action(
                 `\n💳 ${state.paymentMethodName}`;
         }
 
-        await ctx.editMessageText(
-            savedText
-        );
+            try {
+                await ctx.editMessageText(
+                    savedText
+                );
+            } catch (error) {
+                const description =
+                    error?.response?.description ||
+                    "";
 
-        await ctx.reply(
-            "Готово.",
-            getMainMenu()
-        );
+                /*
+                 * Telegram иногда повторно получает
+                 * идентичное редактирование.
+                 * Это не ошибка операции.
+                 */
+                if (
+                    !description.includes(
+                        "message is not modified"
+                    )
+                ) {
+                    throw error;
+                }
+            }
 
-        return ctx.scene.leave();
+            await ctx.reply(
+                "Готово.",
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
     }
+
 );
 
 /*
