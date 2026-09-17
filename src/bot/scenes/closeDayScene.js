@@ -11,7 +11,20 @@ const {
     PaymentMethod,
     Transaction,
     DailyClosure,
+    CampFoodSharedExpense,
 } = require("../../models");
+
+const {
+    allocateCampFoodExpensesForDate,
+} = require(
+    "../../services/campFoodAllocationService"
+);
+
+const {
+    getCampFoodProjectIds,
+} = require(
+    "../../services/campFoodSharedExpenseService"
+);
 
 const {
     getProjectsForUser,
@@ -100,6 +113,20 @@ async function getExpenseSummary(
             ],
         });
 
+    const sharedRows =
+        await CampFoodSharedExpense.findAll({
+            where: {
+                businessDate:
+                    getBusinessDate(),
+
+                fundSource:
+                    "today_revenue",
+
+                paidFromProjectId:
+                projectId,
+            },
+        });
+
     const map =
         new Map();
 
@@ -117,6 +144,33 @@ async function getExpenseSummary(
 
         const categoryName =
             row.category?.name ||
+            "Без статьи";
+
+        const current =
+            map.get(
+                categoryName
+            ) || 0n;
+
+        map.set(
+            categoryName,
+            current + amount
+        );
+    }
+
+    for (
+        const row
+        of sharedRows
+        ) {
+        const amount =
+            BigInt(
+                row.amountKopecks
+            );
+
+        total +=
+            amount;
+
+        const categoryName =
+            row.categoryName ||
             "Без статьи";
 
         const current =
@@ -844,6 +898,23 @@ async function finalizeClosure(
             }
         );
 
+        let campFoodAllocation =
+            null;
+
+        if (
+            getCampFoodProjectIds()
+                .includes(
+                    Number(
+                        state.projectId
+                    )
+                )
+        ) {
+            campFoodAllocation =
+                await allocateCampFoodExpensesForDate(
+                    businessDate
+                );
+        }
+
         let finalText =
             `✅ День закрыт\n\n` +
             `🏢 ${state.projectName}\n` +
@@ -860,6 +931,28 @@ async function finalizeClosure(
                 `${formatKopecks(
                     expenses.total
                 )}`;
+        }
+
+        if (
+            campFoodAllocation
+                ?.allocated
+        ) {
+            finalText +=
+                `\n\n🍔 Общие расходы CampFood распределены между обеими точками.`;
+        } else if (
+            campFoodAllocation
+                ?.reason ===
+            "WAITING_FOR_BOTH"
+        ) {
+            finalText +=
+                `\n\n🍔 Общие расходы CampFood будут распределены после закрытия второй точки.`;
+        } else if (
+            campFoodAllocation
+                ?.reason ===
+            "ZERO_REVENUE"
+        ) {
+            finalText +=
+                `\n\n⚠️ Общие расходы CampFood пока не распределены: выручка обеих точек равна 0 ₽.`;
         }
 
         await ctx.reply(

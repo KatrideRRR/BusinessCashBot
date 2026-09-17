@@ -9,7 +9,62 @@ const {
     Category,
     PaymentMethod,
     DailyClosure,
+    CampFoodSharedExpense,
+    CampFoodExpenseAllocation,
 } = require("../models");
+
+async function getAllocatedExpenseTotal(
+    projectId,
+    startDate,
+    endDate
+) {
+    const rows =
+        await CampFoodExpenseAllocation.findAll({
+            attributes: [
+                "amountKopecks",
+            ],
+
+            where: {
+                projectId,
+            },
+
+            include: [
+                {
+                    model:
+                    CampFoodSharedExpense,
+
+                    as:
+                        "sharedExpense",
+
+                    attributes: [],
+
+                    required: true,
+
+                    where: {
+                        businessDate: {
+                            [Op.between]: [
+                                startDate,
+                                endDate,
+                            ],
+                        },
+                    },
+                },
+            ],
+        });
+
+    return rows.reduce(
+        (
+            sum,
+            row
+        ) =>
+            sum +
+            BigInt(
+                row.amountKopecks ||
+                0
+            ),
+        0n
+    );
+}
 
 /*
  * Общие суммы проекта
@@ -56,6 +111,16 @@ async function getProjectTotals(
 
     let transactionIncome = 0n;
     let expense = 0n;
+
+    const allocatedExpense =
+        await getAllocatedExpenseTotal(
+            projectId,
+            startDate,
+            endDate
+        );
+
+    expense +=
+        allocatedExpense;
 
     for (const row of rows) {
         const amount =
@@ -351,12 +416,130 @@ async function getExpenseByCategory(
     startDate,
     endDate
 ) {
-    return getByCategory(
-        projectId,
-        "expense",
-        startDate,
-        endDate
-    );
+    const directRows =
+        await getByCategory(
+            projectId,
+            "expense",
+            startDate,
+            endDate
+        );
+
+    const allocationRows =
+        await CampFoodExpenseAllocation.findAll({
+            attributes: [
+                "amountKopecks",
+            ],
+
+            where: {
+                projectId,
+            },
+
+            include: [
+                {
+                    model:
+                    CampFoodSharedExpense,
+
+                    as:
+                        "sharedExpense",
+
+                    attributes: [
+                        "categoryName",
+                    ],
+
+                    required: true,
+
+                    where: {
+                        businessDate: {
+                            [Op.between]: [
+                                startDate,
+                                endDate,
+                            ],
+                        },
+                    },
+                },
+            ],
+        });
+
+    const map =
+        new Map();
+
+    function add(
+        name,
+        amount
+    ) {
+        const cleanName =
+            String(
+                name ||
+                "Без статьи"
+            ).trim();
+
+        const key =
+            cleanName
+                .toLocaleLowerCase(
+                    "ru-RU"
+                );
+
+        const current =
+            map.get(key);
+
+        if (current) {
+            current.amount +=
+                BigInt(amount);
+        } else {
+            map.set(
+                key,
+                {
+                    name:
+                    cleanName,
+
+                    amount:
+                        BigInt(amount),
+                }
+            );
+        }
+    }
+
+    for (
+        const row
+        of directRows
+        ) {
+        add(
+            row.name,
+            row.amount
+        );
+    }
+
+    for (
+        const row
+        of allocationRows
+        ) {
+        add(
+            row.sharedExpense
+                ?.categoryName ||
+            "Без статьи",
+
+            row.amountKopecks ||
+            0
+        );
+    }
+
+    return Array.from(
+        map.values()
+    )
+        .filter(
+            (row) =>
+                row.amount !== 0n
+        )
+        .sort(
+            (a, b) =>
+                a.amount >
+                b.amount
+                    ? -1
+                    : a.amount <
+                    b.amount
+                        ? 1
+                        : 0
+        );
 }
 
 async function getExpenseByCategoryAndSource(

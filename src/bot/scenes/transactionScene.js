@@ -26,6 +26,12 @@ const {
 );
 
 const {
+    allocateCampFoodExpensesForDate,
+} = require(
+    "../../services/campFoodAllocationService"
+);
+
+const {
     ensureDefaultPaymentMethods,
 } = require("../../services/paymentMethodService");
 
@@ -1438,6 +1444,23 @@ transactionScene.action(
                     createdBy:
                     ctx.state.user.id,
                 });
+
+            try {
+                await allocateCampFoodExpensesForDate(
+                    getBusinessDate()
+                );
+            } catch (error) {
+                /*
+                 * Сам расход уже сохранён.
+                 * Ошибка автоматического
+                 * распределения не должна
+                 * дублировать расход.
+                 */
+                console.error(
+                    "Ошибка распределения CampFood:",
+                    error
+                );
+            }
 
             let savedText =
                 `✅ Общий расход CampFood сохранён\n\n` +
