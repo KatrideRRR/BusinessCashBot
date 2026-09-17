@@ -8,12 +8,22 @@ const {
     PaymentMethod,
     Transaction,
     DailyClosure,
+    CampFoodSharedExpense,
 } = require("../../models");
 
 const {
     getProjectsForUser,
     getProjectForUser,
 } = require("../../services/projectService");
+
+const {
+    getCampFoodProjectIds,
+    getCampFoodProjects,
+    getSharedExpenseCategories,
+    ensureSharedExpenseCategory,
+} = require(
+    "../../services/campFoodSharedExpenseService"
+);
 
 const {
     ensureDefaultPaymentMethods,
@@ -144,6 +154,17 @@ async function showConfirmation(
         text +=
             "\n\nИсточник денег: ";
 
+        if (
+            state.isCampFoodSharedExpense &&
+            state.fundSource ===
+            "today_revenue" &&
+            state.paidFromProjectName
+        ) {
+            text +=
+                `\n🏪 Взято из кассы: ` +
+                `${state.paidFromProjectName}`;
+        }
+
         text +=
             state.fundSource ===
             "today_revenue"
@@ -226,15 +247,69 @@ transactionScene.enter(
             return ctx.scene.leave();
         }
 
-        const buttons =
-            projects.map(
-                (project) => [
+        let buttons = [];
+
+        if (
+            operationType ===
+            "expense"
+        ) {
+            const campFoodProjectIds =
+                getCampFoodProjectIds();
+
+            const hasCampFoodAccess =
+                projects.some(
+                    (project) =>
+                        campFoodProjectIds.includes(
+                            Number(
+                                project.id
+                            )
+                        )
+                );
+
+            /*
+             * Обычные проекты показываем
+             * как раньше, но две точки
+             * CampFood скрываем.
+             */
+            const normalProjects =
+                projects.filter(
+                    (project) =>
+                        !campFoodProjectIds.includes(
+                            Number(
+                                project.id
+                            )
+                        )
+                );
+
+            buttons =
+                normalProjects.map(
+                    (project) => [
+                        Markup.button.callback(
+                            `🏢 ${project.name}`,
+                            `tx_project_${project.id}`
+                        ),
+                    ]
+                );
+
+            if (hasCampFoodAccess) {
+                buttons.unshift([
                     Markup.button.callback(
-                        `🏢 ${project.name}`,
-                        `tx_project_${project.id}`
+                        "🍔 CampFood",
+                        "tx_campfood_shared"
                     ),
-                ]
-            );
+                ]);
+            }
+        } else {
+            buttons =
+                projects.map(
+                    (project) => [
+                        Markup.button.callback(
+                            `🏢 ${project.name}`,
+                            `tx_project_${project.id}`
+                        ),
+                    ]
+                );
+        }
 
         buttons.push([
             Markup.button.callback(
@@ -260,6 +335,92 @@ transactionScene.enter(
 /*
  * Выбор проекта
  */
+
+transactionScene.action(
+    "tx_campfood_shared",
+    async (ctx) => {
+        await ctx.answerCbQuery();
+
+        const availableProjects =
+            await getProjectsForUser(
+                ctx.state.user
+            );
+
+        const campFoodProjectIds =
+            getCampFoodProjectIds();
+
+        const hasAccess =
+            availableProjects.some(
+                (project) =>
+                    campFoodProjectIds.includes(
+                        Number(
+                            project.id
+                        )
+                    )
+            );
+
+        if (!hasAccess) {
+            await ctx.reply(
+                "Нет доступа к CampFood."
+            );
+
+            return;
+        }
+
+        ctx.scene.state
+            .isCampFoodSharedExpense =
+            true;
+
+        ctx.scene.state.projectId =
+            null;
+
+        ctx.scene.state.projectName =
+            "CampFood";
+
+        /*
+         * Общий CampFood всегда
+         * спрашивает источник денег.
+         */
+        ctx.scene.state
+            .trackTodayRevenueSource =
+            true;
+
+        const categories =
+            await getSharedExpenseCategories();
+
+        const buttons =
+            categories.map(
+                (category) => [
+                    Markup.button.callback(
+                        category.name,
+                        `tx_shared_category_${category.id}`
+                    ),
+                ]
+            );
+
+        buttons.push([
+            Markup.button.callback(
+                "➕ Новая статья",
+                "tx_new_category"
+            ),
+        ]);
+
+        buttons.push([
+            Markup.button.callback(
+                "❌ Отмена",
+                "tx_cancel"
+            ),
+        ]);
+
+        await ctx.editMessageText(
+            "🍔 CampFood\n\n" +
+            "Выберите статью общего расхода:",
+            Markup.inlineKeyboard(
+                buttons
+            )
+        );
+    }
+);
 
 transactionScene.action(
     /^tx_project_(\d+)$/,
@@ -387,6 +548,54 @@ transactionScene.action(
 /*
  * Выбор статьи
  */
+
+transactionScene.action(
+    /^tx_shared_category_(\d+)$/,
+    async (ctx) => {
+        await ctx.answerCbQuery();
+
+        if (
+            !ctx.scene.state
+                .isCampFoodSharedExpense
+        ) {
+            return;
+        }
+
+        const category =
+            await Category.findByPk(
+                Number(
+                    ctx.match[1]
+                )
+            );
+
+        if (
+            !category ||
+            category.type !==
+            "expense" ||
+            !category.isActive ||
+            !getCampFoodProjectIds()
+                .includes(
+                    Number(
+                        category.projectId
+                    )
+                )
+        ) {
+            await ctx.reply(
+                "Статья не найдена."
+            );
+
+            return;
+        }
+
+        ctx.scene.state.categoryId =
+            null;
+
+        ctx.scene.state.categoryName =
+            category.name;
+
+        await askAmount(ctx);
+    }
+);
 
 transactionScene.action(
     /^tx_category_(\d+)$/,
@@ -573,10 +782,137 @@ transactionScene.action(
         ctx.scene.state.fundSource =
             "today_revenue";
 
+        /*
+         * Для общего CampFood теперь
+         * нужно знать, из кассы какой
+         * физической точки взяли деньги.
+         */
+        if (
+            ctx.scene.state
+                .isCampFoodSharedExpense
+        ) {
+            const projects =
+                await getCampFoodProjects();
+
+            const buttons =
+                projects.map(
+                    (project) => [
+                        Markup.button.callback(
+                            `🏢 ${project.name}`,
+                            `tx_shared_payer_${project.id}`
+                        ),
+                    ]
+                );
+
+            buttons.push([
+                Markup.button.callback(
+                    "❌ Отмена",
+                    "tx_cancel"
+                ),
+            ]);
+
+            await ctx.reply(
+                "Из кассы какой точки взяли деньги?",
+                Markup.inlineKeyboard(
+                    buttons
+                )
+            );
+
+            return;
+        }
+
         ctx.scene.state.comment =
             null;
 
-        return showConfirmation(ctx);
+        return showConfirmation(
+            ctx
+        );
+    }
+);
+
+transactionScene.action(
+    /^tx_shared_payer_(\d+)$/,
+    async (ctx) => {
+        await ctx.answerCbQuery();
+
+        const projectId =
+            Number(
+                ctx.match[1]
+            );
+
+        if (
+            !getCampFoodProjectIds()
+                .includes(projectId)
+        ) {
+            await ctx.reply(
+                "Некорректная точка."
+            );
+
+            return;
+        }
+
+        const projects =
+            await getCampFoodProjects();
+
+        const project =
+            projects.find(
+                (item) =>
+                    Number(item.id) ===
+                    projectId
+            );
+
+        if (!project) {
+            await ctx.reply(
+                "Точка не найдена."
+            );
+
+            return;
+        }
+
+        /*
+         * Пока закрытый день менять
+         * не разрешаем.
+         *
+         * В следующем шаге добавим
+         * нормальное переоткрытие.
+         */
+        const closedDay =
+            await DailyClosure.findOne({
+                where: {
+                    projectId,
+
+                    businessDate:
+                        getBusinessDate(),
+
+                    status:
+                        "closed",
+                },
+            });
+
+        if (closedDay) {
+            await ctx.reply(
+                `⛔ День по «${project.name}» уже закрыт.\n\n` +
+                `Сначала нужно переоткрыть день.`,
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
+
+        ctx.scene.state
+            .paidFromProjectId =
+            project.id;
+
+        ctx.scene.state
+            .paidFromProjectName =
+            project.name;
+
+        ctx.scene.state.comment =
+            null;
+
+        return showConfirmation(
+            ctx
+        );
     }
 );
 
@@ -589,6 +925,14 @@ transactionScene.action(
             "other";
 
         ctx.scene.state.comment =
+            null;
+
+        ctx.scene.state
+            .paidFromProjectId =
+            null;
+
+        ctx.scene.state
+            .paidFromProjectName =
             null;
 
         return showConfirmation(ctx);
@@ -640,6 +984,27 @@ transactionScene.on(
                 await ctx.reply(
                     "Название слишком длинное."
                 );
+
+                return;
+            }
+
+            if (
+                ctx.scene.state
+                    .isCampFoodSharedExpense
+            ) {
+                const category =
+                    await ensureSharedExpenseCategory(
+                        text,
+                        ctx.state.user.id
+                    );
+
+                ctx.scene.state.categoryId =
+                    null;
+
+                ctx.scene.state.categoryName =
+                    category.name;
+
+                await askAmount(ctx);
 
                 return;
             }
@@ -729,6 +1094,37 @@ transactionScene.on(
 
             ctx.scene.state.awaiting =
                 null;
+
+            if (
+                ctx.scene.state
+                    .isCampFoodSharedExpense
+            ) {
+                await ctx.reply(
+                    "Из каких денег оплачен расход?",
+                    Markup.inlineKeyboard([
+                        [
+                            Markup.button.callback(
+                                "💰 Из сегодняшней выручки",
+                                "tx_source_today"
+                            ),
+                        ],
+                        [
+                            Markup.button.callback(
+                                "🏦 Из других денег",
+                                "tx_source_other"
+                            ),
+                        ],
+                        [
+                            Markup.button.callback(
+                                "❌ Отмена",
+                                "tx_cancel"
+                            ),
+                        ],
+                    ])
+                );
+
+                return;
+            }
 
             /*
  * Для расходов способ оплаты
@@ -996,6 +1392,78 @@ transactionScene.action(
 
         const state =
             ctx.scene.state;
+
+        if (
+            state.isCampFoodSharedExpense
+        ) {
+            const sharedExpense =
+                await CampFoodSharedExpense.create({
+                    businessDate:
+                        getBusinessDate(),
+
+                    categoryName:
+                    state.categoryName,
+
+                    amountKopecks:
+                    state.amountKopecks,
+
+                    fundSource:
+                    state.fundSource,
+
+                    paidFromProjectId:
+                        state.fundSource ===
+                        "today_revenue"
+                            ? state
+                                .paidFromProjectId
+                            : null,
+
+                    allocatedAt:
+                        null,
+
+                    createdBy:
+                    ctx.state.user.id,
+                });
+
+            let savedText =
+                `✅ Общий расход CampFood сохранён\n\n` +
+                `➖ ${formatKopecks(
+                    sharedExpense.amountKopecks
+                )}\n` +
+                `📌 ${sharedExpense.categoryName}`;
+
+            if (
+                state.fundSource ===
+                "today_revenue"
+            ) {
+                savedText +=
+                    `\n💰 Из сегодняшней выручки`;
+
+                if (
+                    state.paidFromProjectName
+                ) {
+                    savedText +=
+                        `\n🏪 Касса: ` +
+                        state.paidFromProjectName;
+                }
+            } else {
+                savedText +=
+                    `\n🏦 Из других денег`;
+            }
+
+            savedText +=
+                `\n\nРаспределение между точками будет выполнено после закрытия обеих смен.`;
+
+            await ctx.editMessageText(
+                savedText
+            );
+
+            await ctx.reply(
+                "Готово.",
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
 
         const transaction =
             await Transaction.create({

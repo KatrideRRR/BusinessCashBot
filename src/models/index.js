@@ -15,6 +15,8 @@ const PurchaseOrderItem = require("./PurchaseOrderItem");
 const EvotorEvent = require("./EvotorEvent");
 const CargoCampPaymentEvent = require("./CargoCampPaymentEvent");
 const CargoCampRefundEvent = require("./CargoCampRefundEvent");
+const CampFoodSharedExpense = require("./CampFoodSharedExpense");
+const CampFoodExpenseAllocation = require("./CampFoodExpenseAllocation");
 
 /*
  * User ↔ ProjectUser
@@ -354,6 +356,50 @@ CargoCampPaymentEvent.belongsTo(
     }
 );
 
+CampFoodSharedExpense.hasMany(
+    CampFoodExpenseAllocation,
+    {
+        foreignKey:
+            "sharedExpenseId",
+
+        as:
+            "allocations",
+    }
+);
+
+CampFoodExpenseAllocation.belongsTo(
+    CampFoodSharedExpense,
+    {
+        foreignKey:
+            "sharedExpenseId",
+
+        as:
+            "sharedExpense",
+    }
+);
+
+Project.hasMany(
+    CampFoodExpenseAllocation,
+    {
+        foreignKey:
+            "projectId",
+
+        as:
+            "campFoodExpenseAllocations",
+    }
+);
+
+CampFoodExpenseAllocation.belongsTo(
+    Project,
+    {
+        foreignKey:
+            "projectId",
+
+        as:
+            "project",
+    }
+);
+
 module.exports = {
     User,
     Project,
@@ -372,4 +418,6 @@ module.exports = {
     EvotorEvent,
     CargoCampPaymentEvent,
     CargoCampRefundEvent,
+    CampFoodSharedExpense,
+    CampFoodExpenseAllocation,
 };
