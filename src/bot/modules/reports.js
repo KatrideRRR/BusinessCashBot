@@ -19,6 +19,9 @@ const {
     "../../services/reportService"
 );
 
+const dayjs =
+    require("dayjs");
+
 const {
     getReportPeriod,
     formatDateRange,
@@ -31,6 +34,103 @@ const {
 } = require(
     "../../utils/money"
 );
+
+function parseReportDate(
+    value
+) {
+    const match =
+        String(value || "")
+            .trim()
+            .match(
+                /^(\d{2})\.(\d{2})\.(\d{4})$/
+            );
+
+    if (!match) {
+        return null;
+    }
+
+    const [
+        ,
+        day,
+        month,
+        year,
+    ] = match;
+
+    const iso =
+        `${year}-${month}-${day}`;
+
+    const parsed =
+        dayjs(iso);
+
+    if (
+        !parsed.isValid() ||
+        parsed.format(
+            "YYYY-MM-DD"
+        ) !== iso
+    ) {
+        return null;
+    }
+
+    return iso;
+}
+
+function resolveReportPeriod(
+    ctx,
+    periodKey
+) {
+    if (
+        periodKey !==
+        "custom"
+    ) {
+        return getReportPeriod(
+            periodKey
+        );
+    }
+
+    const period =
+        ctx.session
+            ?.reportCustomPeriod;
+
+    if (!period) {
+        return null;
+    }
+
+    return {
+        startDate:
+        period.startDate,
+
+        endDate:
+        period.endDate,
+
+        title:
+            "Произвольный период",
+
+        isCustom:
+            true,
+    };
+}
+
+function getPeriodDisplay(
+    period
+) {
+    if (
+        period.isAll
+    ) {
+        return (
+            "С начала учёта — " +
+            dayjs(
+                period.endDate
+            ).format(
+                "DD.MM.YYYY"
+            )
+        );
+    }
+
+    return formatDateRange(
+        period.startDate,
+        period.endDate
+    );
+}
 
 /*
  * Главное меню отчётов
@@ -63,6 +163,13 @@ async function showReportsMenu(
                 Markup.button.callback(
                     "🗓 Этот месяц",
                     "report_month"
+                ),
+            ],
+
+            [
+                Markup.button.callback(
+                    "🗓 Свой период",
+                    "report_custom_start"
                 ),
             ],
 
@@ -103,9 +210,18 @@ async function showPeriodReport(
     edit = true
 ) {
     const period =
-        getReportPeriod(
+        resolveReportPeriod(
+            ctx,
             periodKey
         );
+
+    if (!period) {
+        await ctx.reply(
+            "Период больше не выбран. Откройте отчёты заново."
+        );
+
+        return;
+    }
 
     const projects =
         await getProjectsForUser(
@@ -118,13 +234,10 @@ async function showPeriodReport(
     let text =
         `📊 ${period.title}\n`;
 
-    if (!period.isAll) {
-        text +=
-            `📅 ${formatDateRange(
-                period.startDate,
-                period.endDate
-            )}\n`;
-    }
+    text +=
+        `📅 ${getPeriodDisplay(
+            period
+        )}\n`;
 
     text += "\n";
 
@@ -253,9 +366,18 @@ async function showAllExpenses(
     periodKey
 ) {
     const period =
-        getReportPeriod(
+        resolveReportPeriod(
+            ctx,
             periodKey
         );
+
+    if (!period) {
+        await ctx.reply(
+            "Период больше не выбран. Откройте отчёты заново."
+        );
+
+        return;
+    }
 
     const projects =
         await getProjectsForUser(
@@ -372,15 +494,9 @@ async function showAllExpenses(
 
     let text =
         `💸 ВСЕ РАСХОДЫ\n` +
-        `📅 ${period.title}\n`;
-
-    if (!period.isAll) {
-        text +=
-            `${formatDateRange(
-                period.startDate,
-                period.endDate
-            )}\n`;
-    }
+        `📅 ${getPeriodDisplay(
+            period
+        )}\n`;
 
     text += "\n";
 
@@ -470,9 +586,18 @@ async function showProjectReport(
     }
 
     const period =
-        getReportPeriod(
+        resolveReportPeriod(
+            ctx,
             periodKey
         );
+
+    if (!period) {
+        await ctx.reply(
+            "Период больше не выбран. Откройте отчёты заново."
+        );
+
+        return;
+    }
 
     const [
         totals,
@@ -783,7 +908,49 @@ function registerReportHandlers(
     );
 
     bot.action(
-        /^report_(today|yesterday|7d|month|all)$/,
+        "report_custom_start",
+        async (ctx) => {
+            await ctx.answerCbQuery();
+
+            ctx.session
+                .reportCustomInput = {
+                step:
+                    "start",
+            };
+
+            await ctx.reply(
+                "🗓 Произвольный период\n\n" +
+                "Введите дату НАЧАЛА периода:\n\n" +
+                "Например: 01.09.2026",
+                Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback(
+                            "❌ Отмена",
+                            "report_custom_cancel"
+                        ),
+                    ],
+                ])
+            );
+        }
+    );
+
+    bot.action(
+        "report_custom_cancel",
+        async (ctx) => {
+            await ctx.answerCbQuery();
+
+            delete ctx.session
+                .reportCustomInput;
+
+            await showReportsMenu(
+                ctx,
+                true
+            );
+        }
+    );
+
+    bot.action(
+        /^report_(today|yesterday|7d|month|all|custom)$/,
         async (ctx) => {
             await ctx.answerCbQuery();
 
@@ -796,7 +963,7 @@ function registerReportHandlers(
     );
 
     bot.action(
-        /^report_expenses_(today|yesterday|7d|month|all)$/,
+        /^report_expenses_(today|yesterday|7d|month|all|custom)$/,
         async (ctx) => {
             await ctx.answerCbQuery();
 
@@ -808,7 +975,7 @@ function registerReportHandlers(
     );
 
     bot.action(
-        /^report_project_(today|yesterday|7d|month|all)_(\d+)$/,
+        /^report_project_(today|yesterday|7d|month|all|custom)_(\d+)$/,
         async (ctx) => {
             await ctx.answerCbQuery();
 
@@ -821,6 +988,103 @@ function registerReportHandlers(
             );
         }
     );
+
+    bot.on(
+        "text",
+        async (
+            ctx,
+            next
+        ) => {
+            const input =
+                ctx.session
+                    ?.reportCustomInput;
+
+            if (!input) {
+                return next();
+            }
+
+            const value =
+                ctx.message
+                    ?.text
+                    ?.trim();
+
+            const date =
+                parseReportDate(
+                    value
+                );
+
+            if (!date) {
+                await ctx.reply(
+                    "Не удалось понять дату.\n\n" +
+                    "Введите в формате:\n" +
+                    "01.09.2026"
+                );
+
+                return;
+            }
+
+            if (
+                input.step ===
+                "start"
+            ) {
+                input.startDate =
+                    date;
+
+                input.step =
+                    "end";
+
+                await ctx.reply(
+                    "Теперь введите дату ОКОНЧАНИЯ периода:\n\n" +
+                    "Например: 18.09.2026"
+                );
+
+                return;
+            }
+
+            if (
+                input.step ===
+                "end"
+            ) {
+                if (
+                    date <
+                    input.startDate
+                ) {
+                    await ctx.reply(
+                        "Дата окончания не может быть раньше даты начала.\n\n" +
+                        "Введите дату окончания ещё раз:"
+                    );
+
+                    return;
+                }
+
+                ctx.session
+                    .reportCustomPeriod = {
+                    startDate:
+                    input.startDate,
+
+                    endDate:
+                    date,
+                };
+
+                delete ctx.session
+                    .reportCustomInput;
+
+                await showPeriodReport(
+                    ctx,
+                    "custom",
+                    false
+                );
+
+                return;
+            }
+
+            delete ctx.session
+                .reportCustomInput;
+
+            return next();
+        }
+    );
+
 }
 
 module.exports = {
