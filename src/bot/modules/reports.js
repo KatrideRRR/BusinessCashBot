@@ -269,6 +269,7 @@ async function showPeriodReport(
         );
 
     const pendingCampFood =
+        isToday &&
         hasCampFood
             ? await getPendingCampFoodExpenseSummary(
                 period.startDate,
@@ -556,6 +557,12 @@ async function showAllExpenses(
     const campFoodProjectIds =
         getCampFoodProjectIds();
 
+    const isToday =
+        period.startDate ===
+        getBusinessDate() &&
+        period.endDate ===
+        getBusinessDate();
+
     const hasCampFood =
         projects.some(
             (project) =>
@@ -567,6 +574,7 @@ async function showAllExpenses(
         );
 
     const pendingCampFood =
+        isToday &&
         hasCampFood
             ? await getPendingCampFoodExpenseSummary(
                 period.startDate,
