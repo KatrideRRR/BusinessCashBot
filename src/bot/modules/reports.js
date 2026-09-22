@@ -232,6 +232,11 @@ async function showPeriodReport(
         return;
     }
 
+    const projects =
+        await getProjectsForUser(
+            ctx.state.user
+        );
+
     const firstActivityDate =
         periodKey === "all"
             ? await getFirstActivityDate(
@@ -243,11 +248,6 @@ async function showPeriodReport(
                 )
             )
             : null;
-
-    const projects =
-        await getProjectsForUser(
-            ctx.state.user
-        );
 
     const campFoodProjectIds =
         getCampFoodProjectIds();
