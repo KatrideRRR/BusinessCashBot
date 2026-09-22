@@ -15,16 +15,24 @@ const {
     getIncomeByCategory,
     getExpenseByCategory,
     getClosureStatus,
+    getPendingCampFoodExpenseSummary,
+    getCampFoodCashExpenseSummary,
 } = require(
     "../../services/reportService"
 );
 
+const {
+    getCampFoodProjectIds,
+} = require(
+    "../../services/campFoodSharedExpenseService"
+);
 const dayjs =
     require("dayjs");
 
 const {
     getReportPeriod,
     formatDateRange,
+    getBusinessDate,
 } = require(
     "../../utils/businessDate"
 );
@@ -228,6 +236,44 @@ async function showPeriodReport(
             ctx.state.user
         );
 
+    const campFoodProjectIds =
+        getCampFoodProjectIds();
+
+    const isToday =
+        period.startDate ===
+        getBusinessDate() &&
+        period.endDate ===
+        getBusinessDate();
+
+    const hasCampFood =
+        projects.some(
+            (project) =>
+                campFoodProjectIds.includes(
+                    Number(
+                        project.id
+                    )
+                )
+        );
+
+    const pendingCampFood =
+        hasCampFood
+            ? await getPendingCampFoodExpenseSummary(
+                period.startDate,
+                period.endDate
+            )
+            : {
+                total:
+                    0n,
+                todayRevenueTotal:
+                    0n,
+                otherTotal:
+                    0n,
+                rows:
+                    [],
+                otherRows:
+                    [],
+            };
+
     let totalIncome = 0n;
     let totalExpense = 0n;
 
@@ -275,17 +321,59 @@ async function showPeriodReport(
         totalExpense +=
             totals.expense;
 
-        text +=
-            `🏢 ${project.name}\n` +
-            `Доход: ${formatKopecks(
-                totals.income
-            )}\n` +
-            `Расходы: ${formatKopecks(
-                totals.expense
-            )}\n` +
-            `Результат: ${formatKopecks(
-                totals.result
-            )}`;
+        const isCampFoodProject =
+            campFoodProjectIds.includes(
+                Number(
+                    project.id
+                )
+            );
+
+        if (
+            isToday &&
+            isCampFoodProject &&
+            pendingCampFood.total > 0n
+        ) {
+            const cashExpenses =
+                await getCampFoodCashExpenseSummary(
+                    project.id,
+                    period.startDate,
+                    period.endDate
+                );
+
+            const cashBalance =
+                totals.income -
+                cashExpenses.total;
+
+            text +=
+                `🏢 ${project.name}\n` +
+                `💰 Выручка сейчас: ${formatKopecks(
+                    totals.income
+                )}\n` +
+                `💵 Из кассы сегодня: ${formatKopecks(
+                    cashExpenses.total
+                )}\n` +
+                `💳 Остаток кассы: ${formatKopecks(
+                    cashBalance
+                )}\n` +
+                `➖ Расходы точки: ⏳ после закрытия`;
+        } else {
+            text +=
+                `🏢 ${project.name}\n` +
+                `${
+                    project.revenueMode ===
+                    "daily_close"
+                        ? "💰 Выручка"
+                        : "💰 Доход"
+                }: ${formatKopecks(
+                    totals.income
+                )}\n` +
+                `➖ Расходы: ${formatKopecks(
+                    totals.expense
+                )}\n` +
+                `📈 Результат: ${formatKopecks(
+                    totals.result
+                )}`;
+        }
 
         /*
          * Статус закрытия показываем
@@ -318,6 +406,53 @@ async function showPeriodReport(
         ]);
     }
 
+    /*
+ * Нераспределённые расходы CampFood
+ * ещё не входят в расходы конкретных
+ * точек, поэтому добавляем их ОДИН раз
+ * только в общий итог.
+ */
+    if (
+        pendingCampFood.total > 0n
+    ) {
+        totalExpense +=
+            pendingCampFood.total;
+
+        text +=
+            `🍔 ОБЩИЕ РАСХОДЫ CAMPFOOD\n`;
+
+        for (
+            const row
+            of pendingCampFood.rows
+            ) {
+            text +=
+                `${row.name} — ` +
+                `${formatKopecks(
+                    row.amount
+                )}\n`;
+        }
+
+        text +=
+            `\n💵 Из дневной выручки: ` +
+            `${formatKopecks(
+                pendingCampFood
+                    .todayRevenueTotal
+            )}\n` +
+
+            `🏦 Из других денег: ` +
+            `${formatKopecks(
+                pendingCampFood
+                    .otherTotal
+            )}\n` +
+
+            `➖ Всего расходов CampFood: ` +
+            `${formatKopecks(
+                pendingCampFood.total
+            )}\n\n` +
+
+            `⏳ Пока не распределены между точками.\n\n`;
+    }
+
     const totalResult =
         totalIncome -
         totalExpense;
@@ -331,9 +466,13 @@ async function showPeriodReport(
         `➖ Расходы: ${formatKopecks(
             totalExpense
         )}\n` +
-        `📈 Результат: ${formatKopecks(
+        `${
+            pendingCampFood.total > 0n
+                ? "📊 Предварительный результат"
+                : "📈 Результат"
+        }: ${formatKopecks(
             totalResult
-        )}`;
+        )}`
 
     buttons.push([
         Markup.button.callback(
@@ -383,6 +522,36 @@ async function showAllExpenses(
         await getProjectsForUser(
             ctx.state.user
         );
+
+    const campFoodProjectIds =
+        getCampFoodProjectIds();
+
+    const hasCampFood =
+        projects.some(
+            (project) =>
+                campFoodProjectIds.includes(
+                    Number(
+                        project.id
+                    )
+                )
+        );
+
+    const pendingCampFood =
+        hasCampFood
+            ? await getPendingCampFoodExpenseSummary(
+                period.startDate,
+                period.endDate
+            )
+            : {
+                total:
+                    0n,
+                todayRevenueTotal:
+                    0n,
+                otherTotal:
+                    0n,
+                rows:
+                    [],
+            };
 
     const categoriesMap =
         new Map();
@@ -467,6 +636,64 @@ async function showAllExpenses(
         }
     }
 
+    /*
+ * Незакрытые общие расходы CampFood
+ * добавляем сюда один раз.
+ */
+    if (
+        pendingCampFood.total > 0n
+    ) {
+        for (
+            const row
+            of pendingCampFood.rows
+            ) {
+            const amount =
+                BigInt(
+                    row.amount
+                );
+
+            grandTotal +=
+                amount;
+
+            const normalizedName =
+                String(
+                    row.name
+                )
+                    .trim()
+                    .toLocaleLowerCase(
+                        "ru-RU"
+                    );
+
+            const existing =
+                categoriesMap.get(
+                    normalizedName
+                );
+
+            if (existing) {
+                existing.amount +=
+                    amount;
+            } else {
+                categoriesMap.set(
+                    normalizedName,
+                    {
+                        name:
+                        row.name,
+
+                        amount,
+                    }
+                );
+            }
+        }
+
+        projectRows.push({
+            name:
+                "CampFood — общие расходы",
+
+            amount:
+            pendingCampFood.total,
+        });
+    }
+
     const categoryRows =
         Array.from(
             categoriesMap.values()
@@ -541,6 +768,25 @@ async function showAllExpenses(
             `${formatKopecks(
                 grandTotal
             )}`;
+
+        if (
+            pendingCampFood.total > 0n
+        ) {
+            text +=
+                `\n\n🍔 Текущие расходы CampFood\n` +
+                `💵 Из дневной выручки — ` +
+                `${formatKopecks(
+                    pendingCampFood
+                        .todayRevenueTotal
+                )}\n` +
+                `🏦 Из других денег — ` +
+                `${formatKopecks(
+                    pendingCampFood
+                        .otherTotal
+                )}\n` +
+                `⏳ Распределение между точками ещё не завершено.`;
+        }
+
     }
 
     await ctx.editMessageText(
@@ -599,6 +845,22 @@ async function showProjectReport(
         return;
     }
 
+    const campFoodProjectIds =
+        getCampFoodProjectIds();
+
+    const isCampFood =
+        campFoodProjectIds.includes(
+            Number(
+                project.id
+            )
+        );
+
+    const isToday =
+        period.startDate ===
+        getBusinessDate() &&
+        period.endDate ===
+        getBusinessDate();
+
     const [
         totals,
         paymentMethods,
@@ -631,6 +893,39 @@ async function showProjectReport(
                 period.endDate
             ),
         ]);
+
+    const pendingCampFood =
+        isCampFood && isToday
+            ? await getPendingCampFoodExpenseSummary(
+                period.startDate,
+                period.endDate
+            )
+            : {
+                total:
+                    0n,
+                todayRevenueTotal:
+                    0n,
+                otherTotal:
+                    0n,
+                rows:
+                    [],
+                otherRows:
+                    [],
+            };
+
+    const cashExpenses =
+        isCampFood && isToday
+            ? await getCampFoodCashExpenseSummary(
+                project.id,
+                period.startDate,
+                period.endDate
+            )
+            : {
+                total:
+                    0n,
+                rows:
+                    [],
+            };
 
     let text =
         `📊 ${project.name}\n` +
@@ -740,105 +1035,200 @@ async function showProjectReport(
     * Объединяем одинаковые статьи
     * независимо от fund_source и categoryId.
     */
-    text +=
-        "\n➖ РАСХОДЫ\n";
 
     if (
-        expenseCategories.length === 0
+        isCampFood &&
+        isToday &&
+        pendingCampFood.total > 0n
     ) {
         text +=
-            "Расходов нет.\n";
-    } else {
-        const expenseMap =
-            new Map();
+            `\n➖ РАСХОДЫ СЕГОДНЯ\n`;
 
-        for (
-            const row
-            of expenseCategories
-            ) {
-            const displayName =
-                String(
-                    row.name ||
-                    "Без статьи"
-                ).trim();
+        /*
+         * Деньги, которые реально
+         * вышли из кассы ЭТОЙ точки.
+         */
+        text +=
+            `\n💵 ИЗ СЕГОДНЯШНЕЙ ВЫРУЧКИ\n`;
 
-            const normalizedName =
-                displayName
-                    .toLocaleLowerCase(
-                        "ru-RU"
-                    );
-
-            const existing =
-                expenseMap.get(
-                    normalizedName
-                );
-
-            if (existing) {
-                existing.amount +=
-                    BigInt(
+        if (
+            cashExpenses.rows.length ===
+            0
+        ) {
+            text +=
+                `Из кассы расходов не было.\n`;
+        } else {
+            for (
+                const row
+                of cashExpenses.rows
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
                         row.amount
-                    );
-            } else {
-                expenseMap.set(
-                    normalizedName,
-                    {
-                        name:
-                        displayName,
-
-                        amount:
-                            BigInt(
-                                row.amount
-                            ),
-                    }
-                );
+                    )}\n`;
             }
         }
 
-        const mergedExpenses =
-            Array.from(
-                expenseMap.values()
-            ).sort(
-                (a, b) =>
-                    a.amount >
-                    b.amount
-                        ? -1
-                        : a.amount <
-                        b.amount
-                            ? 1
-                            : 0
-            );
+        text +=
+            `Всего из кассы: ` +
+            `${formatKopecks(
+                cashExpenses.total
+            )}\n`;
 
-        for (
-            const row
-            of mergedExpenses
-            ) {
+        /*
+         * Общие расходы CampFood,
+         * оплаченные не из кассы смены.
+         */
+        if (
+            pendingCampFood.otherTotal >
+            0n
+        ) {
             text +=
-                `${row.name} — ` +
+                `\n🏦 ИЗ ДРУГИХ ДЕНЕГ — ОБЩИЕ CAMPFOOD\n`;
+
+            for (
+                const row
+                of pendingCampFood
+                .otherRows
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
+                        row.amount
+                    )}\n`;
+            }
+
+            text +=
+                `Всего из других денег: ` +
                 `${formatKopecks(
-                    row.amount
+                    pendingCampFood
+                        .otherTotal
                 )}\n`;
         }
-    }
 
-    text +=
-        `\nВсего расходов: ` +
-        `${formatKopecks(
-            totals.expense
-        )}`;
+        text +=
+            `\nℹ️ Окончательная доля расходов этой точки ` +
+            `будет рассчитана после закрытия обеих смен.`;
 
+        const cashBalance =
+            totals.income -
+            cashExpenses.total;
 
-    if (
-        totals.income > 0n ||
-        totals.expense > 0n
-    ) {
         text +=
             `\n\n──────────────\n` +
-            `📈 Финансовый результат: ` +
-            `${formatKopecks(
-                totals.result
-            )}`;
-    }
+            `💰 Выручка сейчас: ${formatKopecks(
+                totals.income
+            )}\n` +
+            `💵 Потрачено из кассы: ${formatKopecks(
+                cashExpenses.total
+            )}\n` +
+            `💳 Остаток дневной выручки: ${formatKopecks(
+                cashBalance
+            )}\n\n` +
+            `⏳ Финансовый результат точки будет ` +
+            `определён после закрытия обеих смен.`;
+    } else {
 
+        text +=
+            "\n➖ РАСХОДЫ\n";
+
+        if (
+            expenseCategories.length === 0
+        ) {
+            text +=
+                "Расходов нет.\n";
+        } else {
+            const expenseMap =
+                new Map();
+
+            for (
+                const row
+                of expenseCategories
+                ) {
+                const displayName =
+                    String(
+                        row.name ||
+                        "Без статьи"
+                    ).trim();
+
+                const normalizedName =
+                    displayName
+                        .toLocaleLowerCase(
+                            "ru-RU"
+                        );
+
+                const existing =
+                    expenseMap.get(
+                        normalizedName
+                    );
+
+                if (existing) {
+                    existing.amount +=
+                        BigInt(
+                            row.amount
+                        );
+                } else {
+                    expenseMap.set(
+                        normalizedName,
+                        {
+                            name:
+                            displayName,
+
+                            amount:
+                                BigInt(
+                                    row.amount
+                                ),
+                        }
+                    );
+                }
+            }
+
+            const mergedExpenses =
+                Array.from(
+                    expenseMap.values()
+                ).sort(
+                    (a, b) =>
+                        a.amount >
+                        b.amount
+                            ? -1
+                            : a.amount <
+                            b.amount
+                                ? 1
+                                : 0
+                );
+
+            for (
+                const row
+                of mergedExpenses
+                ) {
+                text +=
+                    `${row.name} — ` +
+                    `${formatKopecks(
+                        row.amount
+                    )}\n`;
+            }
+        }
+
+        text +=
+            `\nВсего расходов: ` +
+            `${formatKopecks(
+                totals.expense
+            )}`;
+
+
+        if (
+            totals.income > 0n ||
+            totals.expense > 0n
+        ) {
+            text +=
+                `\n\n──────────────\n` +
+                `📈 Финансовый результат: ` +
+                `${formatKopecks(
+                    totals.result
+                )}`;
+        }
+    }
     /*
      * Статус дня
      */

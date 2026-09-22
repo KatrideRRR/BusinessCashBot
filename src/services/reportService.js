@@ -713,6 +713,267 @@ async function getByCategory(
 }
 
 /*
+ * Общие расходы CampFood,
+ * которые ещё НЕ распределены
+ * между точками.
+ */
+async function getPendingCampFoodExpenseSummary(
+    startDate,
+    endDate
+) {
+    const rows =
+        await CampFoodSharedExpense.findAll({
+            attributes: [
+                "categoryName",
+                "amountKopecks",
+                "fundSource",
+                "paidFromProjectId",
+            ],
+
+            where: {
+                businessDate: {
+                    [Op.between]: [
+                        startDate,
+                        endDate,
+                    ],
+                },
+
+                allocatedAt:
+                    null,
+            },
+
+            raw:
+                true,
+        });
+
+    const allMap =
+        new Map();
+
+    const otherMap =
+        new Map();
+
+    let total =
+        0n;
+
+    let todayRevenueTotal =
+        0n;
+
+    let otherTotal =
+        0n;
+
+    function addToMap(
+        map,
+        name,
+        amount
+    ) {
+        const cleanName =
+            String(
+                name ||
+                "Без статьи"
+            ).trim();
+
+        const key =
+            cleanName
+                .toLocaleLowerCase(
+                    "ru-RU"
+                );
+
+        const current =
+            map.get(key);
+
+        if (current) {
+            current.amount +=
+                amount;
+        } else {
+            map.set(
+                key,
+                {
+                    name:
+                    cleanName,
+
+                    amount,
+                }
+            );
+        }
+    }
+
+    for (
+        const row
+        of rows
+        ) {
+        const amount =
+            BigInt(
+                row.amountKopecks ||
+                0
+            );
+
+        total +=
+            amount;
+
+        addToMap(
+            allMap,
+            row.categoryName,
+            amount
+        );
+
+        if (
+            row.fundSource ===
+            "today_revenue"
+        ) {
+            todayRevenueTotal +=
+                amount;
+        } else {
+            otherTotal +=
+                amount;
+
+            addToMap(
+                otherMap,
+                row.categoryName,
+                amount
+            );
+        }
+    }
+
+    const sortRows =
+        (map) =>
+            Array.from(
+                map.values()
+            ).sort(
+                (a, b) =>
+                    a.amount >
+                    b.amount
+                        ? -1
+                        : a.amount <
+                        b.amount
+                            ? 1
+                            : 0
+            );
+
+    return {
+        total,
+        todayRevenueTotal,
+        otherTotal,
+
+        rows:
+            sortRows(
+                allMap
+            ),
+
+        otherRows:
+            sortRows(
+                otherMap
+            ),
+    };
+}
+
+
+/*
+ * Сколько денег физически
+ * взяли из сегодняшней выручки
+ * конкретной точки CampFood.
+ *
+ * Это движение кассы, а НЕ
+ * экономическая доля расхода.
+ */
+async function getCampFoodCashExpenseSummary(
+    projectId,
+    startDate,
+    endDate
+) {
+    const rows =
+        await CampFoodSharedExpense.findAll({
+            attributes: [
+                "categoryName",
+                "amountKopecks",
+            ],
+
+            where: {
+                businessDate: {
+                    [Op.between]: [
+                        startDate,
+                        endDate,
+                    ],
+                },
+
+                fundSource:
+                    "today_revenue",
+
+                paidFromProjectId:
+                projectId,
+            },
+
+            raw:
+                true,
+        });
+
+    const map =
+        new Map();
+
+    let total =
+        0n;
+
+    for (
+        const row
+        of rows
+        ) {
+        const amount =
+            BigInt(
+                row.amountKopecks ||
+                0
+            );
+
+        total +=
+            amount;
+
+        const name =
+            String(
+                row.categoryName ||
+                "Без статьи"
+            ).trim();
+
+        const key =
+            name
+                .toLocaleLowerCase(
+                    "ru-RU"
+                );
+
+        const current =
+            map.get(key);
+
+        if (current) {
+            current.amount +=
+                amount;
+        } else {
+            map.set(
+                key,
+                {
+                    name,
+                    amount,
+                }
+            );
+        }
+    }
+
+    return {
+        total,
+
+        rows:
+            Array.from(
+                map.values()
+            ).sort(
+                (a, b) =>
+                    a.amount >
+                    b.amount
+                        ? -1
+                        : a.amount <
+                        b.amount
+                            ? 1
+                            : 0
+            ),
+    };
+}
+
+/*
  * Проверка закрытия конкретного дня
  */
 
@@ -736,4 +997,6 @@ module.exports = {
     getExpenseByCategory,
     getExpenseByCategoryAndSource,
     getClosureStatus,
+    getPendingCampFoodExpenseSummary,
+    getCampFoodCashExpenseSummary,
 };
