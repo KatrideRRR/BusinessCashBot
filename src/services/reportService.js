@@ -880,7 +880,12 @@ async function getCampFoodCashExpenseSummary(
     startDate,
     endDate
 ) {
-    const rows =
+    /*
+     * 1. Общие расходы CampFood,
+     * физически оплаченные из кассы
+     * этой точки.
+     */
+    const sharedRows =
         await CampFoodSharedExpense.findAll({
             attributes: [
                 "categoryName",
@@ -906,33 +911,78 @@ async function getCampFoodCashExpenseSummary(
                 true,
         });
 
+    /*
+     * 2. Расходы, которые принадлежат
+     * непосредственно этой точке.
+     *
+     * Сейчас сюда как раз попадёт
+     * аренда.
+     */
+    const directRows =
+        await Transaction.findAll({
+            attributes: [
+                "amountKopecks",
+            ],
+
+            where: {
+                projectId,
+
+                type:
+                    "expense",
+
+                fundSource:
+                    "today_revenue",
+
+                businessDate: {
+                    [Op.between]: [
+                        startDate,
+                        endDate,
+                    ],
+                },
+            },
+
+            include: [
+                {
+                    model:
+                    Category,
+
+                    as:
+                        "category",
+
+                    attributes: [
+                        "name",
+                    ],
+                },
+            ],
+        });
+
     const map =
         new Map();
 
     let total =
         0n;
 
-    for (
-        const row
-        of rows
-        ) {
+    function add(
+        name,
+        rawAmount
+    ) {
         const amount =
             BigInt(
-                row.amountKopecks ||
+                rawAmount ||
                 0
             );
 
         total +=
             amount;
 
-        const name =
+        const cleanName =
             String(
-                row.categoryName ||
+                name ||
                 "Без статьи"
             ).trim();
 
         const key =
-            name
+            cleanName
                 .toLocaleLowerCase(
                     "ru-RU"
                 );
@@ -947,11 +997,33 @@ async function getCampFoodCashExpenseSummary(
             map.set(
                 key,
                 {
-                    name,
+                    name:
+                    cleanName,
+
                     amount,
                 }
             );
         }
+    }
+
+    for (
+        const row
+        of sharedRows
+        ) {
+        add(
+            row.categoryName,
+            row.amountKopecks
+        );
+    }
+
+    for (
+        const row
+        of directRows
+        ) {
+        add(
+            row.category?.name,
+            row.amountKopecks
+        );
     }
 
     return {

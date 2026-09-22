@@ -69,6 +69,76 @@ function getTypeEmoji(type) {
         : "➖";
 }
 
+function isCampFoodRentCategory(
+    name
+) {
+    return (
+        String(name || "")
+            .trim()
+            .toLocaleLowerCase(
+                "ru-RU"
+            ) === "аренда"
+    );
+}
+
+async function askCampFoodRentProject(
+    ctx
+) {
+    const projects =
+        await getProjectsForUser(
+            ctx.state.user
+        );
+
+    const campFoodProjectIds =
+        getCampFoodProjectIds();
+
+    const availableProjects =
+        projects.filter(
+            (project) =>
+                campFoodProjectIds.includes(
+                    Number(
+                        project.id
+                    )
+                )
+        );
+
+    if (
+        availableProjects.length ===
+        0
+    ) {
+        await ctx.reply(
+            "Нет доступных точек CampFood."
+        );
+
+        return;
+    }
+
+    const buttons =
+        availableProjects.map(
+            (project) => [
+                Markup.button.callback(
+                    `🏢 ${project.name}`,
+                    `tx_rent_project_${project.id}`
+                ),
+            ]
+        );
+
+    buttons.push([
+        Markup.button.callback(
+            "❌ Отмена",
+            "tx_cancel"
+        ),
+    ]);
+
+    await ctx.reply(
+        "🏠 Аренда\n\n" +
+        "На какую точку относится этот расход?",
+        Markup.inlineKeyboard(
+            buttons
+        )
+    );
+}
+
 async function cancelOperation(ctx) {
     await ctx.reply(
         "Операция отменена.",
@@ -551,6 +621,157 @@ transactionScene.action(
     }
 );
 
+transactionScene.action(
+    /^tx_rent_project_(\d+)$/,
+    async (ctx) => {
+        await ctx.answerCbQuery();
+
+        const projectId =
+            Number(
+                ctx.match[1]
+            );
+
+        if (
+            !getCampFoodProjectIds()
+                .includes(
+                    projectId
+                )
+        ) {
+            await ctx.reply(
+                "Некорректная точка CampFood."
+            );
+
+            return;
+        }
+
+        const project =
+            await getProjectForUser(
+                projectId,
+                ctx.state.user
+            );
+
+        if (!project) {
+            await ctx.reply(
+                "Нет доступа к этой точке."
+            );
+
+            return;
+        }
+
+        const closedDay =
+            await DailyClosure.findOne({
+                where: {
+                    projectId:
+                    project.id,
+
+                    businessDate:
+                        getBusinessDate(),
+
+                    status:
+                        "closed",
+                },
+            });
+
+        if (closedDay) {
+            await ctx.reply(
+                `⛔ День по «${project.name}» уже закрыт.\n\n` +
+                `Сначала нужно переоткрыть день.`,
+                getMainMenu()
+            );
+
+            return ctx.scene.leave();
+        }
+
+        /*
+         * Находим именно статью
+         * "Аренда" выбранной точки.
+         */
+        let category =
+            await Category.findOne({
+                where: {
+                    projectId:
+                    project.id,
+
+                    type:
+                        "expense",
+
+                    name:
+                    ctx.scene.state
+                        .categoryName,
+                },
+            });
+
+        /*
+         * Если по какой-то причине
+         * статьи у этой точки ещё нет —
+         * создаём её.
+         */
+        if (!category) {
+            category =
+                await Category.create({
+                    projectId:
+                    project.id,
+
+                    type:
+                        "expense",
+
+                    name:
+                    ctx.scene.state
+                        .categoryName,
+
+                    isActive:
+                        true,
+
+                    createdBy:
+                    ctx.state.user.id,
+                });
+        } else if (
+            !category.isActive
+        ) {
+            await category.update({
+                isActive:
+                    true,
+            });
+        }
+
+        /*
+         * С этого момента это уже
+         * НЕ общий расход CampFood.
+         *
+         * Он навсегда принадлежит
+         * выбранной точке.
+         */
+        ctx.scene.state
+            .isCampFoodSharedExpense =
+            false;
+
+        ctx.scene.state
+            .isCampFoodFixedExpense =
+            true;
+
+        ctx.scene.state.projectId =
+            project.id;
+
+        ctx.scene.state.projectName =
+            project.name;
+
+        ctx.scene.state.categoryId =
+            category.id;
+
+        ctx.scene.state.categoryName =
+            category.name;
+
+        ctx.scene.state
+            .trackTodayRevenueSource =
+            Boolean(
+                project
+                    .trackTodayRevenueSource
+            );
+
+        await askAmount(ctx);
+    }
+);
+
 /*
  * Выбор статьи
  */
@@ -598,6 +819,20 @@ transactionScene.action(
 
         ctx.scene.state.categoryName =
             category.name;
+
+        if (
+            isCampFoodRentCategory(
+                category.name
+            )
+        ) {
+            ctx.scene.state
+                .isCampFoodFixedExpense =
+                true;
+
+            return askCampFoodRentProject(
+                ctx
+            );
+        }
 
         await askAmount(ctx);
     }
@@ -1009,6 +1244,22 @@ transactionScene.on(
 
                 ctx.scene.state.categoryName =
                     category.name;
+
+                if (
+                    isCampFoodRentCategory(
+                        category.name
+                    )
+                ) {
+                    ctx.scene.state
+                        .isCampFoodFixedExpense =
+                        true;
+
+                    await askCampFoodRentProject(
+                        ctx
+                    );
+
+                    return;
+                }
 
                 await askAmount(ctx);
 
