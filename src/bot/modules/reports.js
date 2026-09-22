@@ -17,6 +17,7 @@ const {
     getClosureStatus,
     getPendingCampFoodExpenseSummary,
     getCampFoodCashExpenseSummary,
+    getFirstActivityDate,
 } = require(
     "../../services/reportService"
 );
@@ -231,6 +232,18 @@ async function showPeriodReport(
         return;
     }
 
+    const firstActivityDate =
+        periodKey === "all"
+            ? await getFirstActivityDate(
+                projects.map(
+                    (project) =>
+                        Number(
+                            project.id
+                        )
+                )
+            )
+            : null;
+
     const projects =
         await getProjectsForUser(
             ctx.state.user
@@ -280,10 +293,27 @@ async function showPeriodReport(
     let text =
         `📊 ${period.title}\n`;
 
-    text +=
-        `📅 ${getPeriodDisplay(
-            period
-        )}\n`;
+    if (
+        periodKey === "all" &&
+        firstActivityDate
+    ) {
+        text +=
+            `📅 ${formatDateRange(
+                firstActivityDate,
+                period.endDate
+            )}\n` +
+            `🚀 Первая операция: ` +
+            `${dayjs(
+                firstActivityDate
+            ).format(
+                "DD.MM.YYYY"
+            )}\n`;
+    } else {
+        text +=
+            `📅 ${getPeriodDisplay(
+                period
+            )}\n`;
+    }
 
     text += "\n";
 

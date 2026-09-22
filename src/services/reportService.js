@@ -973,6 +973,57 @@ async function getCampFoodCashExpenseSummary(
     };
 }
 
+async function getFirstActivityDate(
+    projectIds
+) {
+    if (
+        !Array.isArray(projectIds) ||
+        projectIds.length === 0
+    ) {
+        return null;
+    }
+
+    const where = {
+        projectId: {
+            [Op.in]:
+            projectIds,
+        },
+    };
+
+    const [
+        firstTransactionDate,
+        firstClosureDate,
+    ] =
+        await Promise.all([
+            Transaction.min(
+                "businessDate",
+                {
+                    where,
+                }
+            ),
+
+            DailyClosure.min(
+                "businessDate",
+                {
+                    where,
+                }
+            ),
+        ]);
+
+    const dates = [
+        firstTransactionDate,
+        firstClosureDate,
+    ]
+        .filter(Boolean)
+        .map(String)
+        .sort();
+
+    return (
+        dates[0] ||
+        null
+    );
+}
+
 /*
  * Проверка закрытия конкретного дня
  */
@@ -999,4 +1050,5 @@ module.exports = {
     getClosureStatus,
     getPendingCampFoodExpenseSummary,
     getCampFoodCashExpenseSummary,
+    getFirstActivityDate,
 };
