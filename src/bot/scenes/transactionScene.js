@@ -69,19 +69,19 @@ function getTypeEmoji(type) {
         : "➖";
 }
 
-function isCampFoodRentCategory(
-    name
-) {
-    return (
-        String(name || "")
-            .trim()
-            .toLocaleLowerCase(
-                "ru-RU"
-            ) === "аренда"
-    );
+function isCampFoodPointExpenseCategory(name) {
+    const categoryName = String(name || "")
+        .trim()
+        .toLocaleLowerCase("ru-RU");
+
+    return [
+        "аренда",
+        "зарплата",
+        "зарплаты",
+    ].includes(categoryName);
 }
 
-async function askCampFoodRentProject(
+async function askCampFoodPointProject(
     ctx
 ) {
     const projects =
@@ -118,7 +118,7 @@ async function askCampFoodRentProject(
             (project) => [
                 Markup.button.callback(
                     `🏢 ${project.name}`,
-                    `tx_rent_project_${project.id}`
+                    `tx_point_project_${project.id}`
                 ),
             ]
         );
@@ -131,11 +131,9 @@ async function askCampFoodRentProject(
     ]);
 
     await ctx.reply(
-        "🏠 Аренда\n\n" +
+        `📍 ${ctx.scene.state.categoryName}\n\n` +
         "На какую точку относится этот расход?",
-        Markup.inlineKeyboard(
-            buttons
-        )
+        Markup.inlineKeyboard(buttons)
     );
 }
 
@@ -622,7 +620,7 @@ transactionScene.action(
 );
 
 transactionScene.action(
-    /^tx_rent_project_(\d+)$/,
+    /^tx_(?:rent|point)_project_(\d+)$/,
     async (ctx) => {
         await ctx.answerCbQuery();
 
@@ -821,7 +819,8 @@ transactionScene.action(
             category.name;
 
         if (
-            isCampFoodRentCategory(
+            isCampFoodPointExpenseCategory(
+
                 category.name
             )
         ) {
@@ -1246,7 +1245,8 @@ transactionScene.on(
                     category.name;
 
                 if (
-                    isCampFoodRentCategory(
+                    isCampFoodPointExpenseCategory(
+
                         category.name
                     )
                 ) {
