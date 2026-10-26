@@ -8,7 +8,11 @@ const {
 } = require(
     "../../services/projectService"
 );
-
+const {
+    getCampFoodExpenseSummary,
+} = require(
+    "../../services/campFoodExpenseSummaryService"
+);
 const {
     getProjectTotals,
     getIncomeByPaymentMethod,
@@ -289,7 +293,6 @@ async function showPeriodReport(
 
     let totalIncome = 0n;
     let totalExpense = 0n;
-    let campFoodExpenseTotal = 0n;
 
     let text =
         `📊 ${period.title}\n`;
@@ -359,9 +362,6 @@ async function showPeriodReport(
                 )
             );
 
-        if (isCampFoodProject) {
-            campFoodExpenseTotal += totals.expense;
-        }
 
         if (
             isToday &&
@@ -444,51 +444,12 @@ async function showPeriodReport(
         ]);
     }
 
-    /*
- * Нераспределённые расходы CampFood
- * ещё не входят в расходы конкретных
- * точек, поэтому добавляем их ОДИН раз
- * только в общий итог.
- */
-    if (
-        pendingCampFood.total > 0n
-    ) {
-        totalExpense +=
-            pendingCampFood.total;
 
-        text +=
-            `🍔 ОБЩИЕ РАСХОДЫ CAMPFOOD\n`;
-
-        for (
-            const row
-            of pendingCampFood.rows
-            ) {
-            text +=
-                `${row.name} — ` +
-                `${formatKopecks(
-                    row.amount
-                )}\n`;
-        }
-
-        text +=
-            `\n💵 Из дневной выручки: ` +
-            `${formatKopecks(
-                pendingCampFood
-                    .todayRevenueTotal
-            )}\n` +
-
-            `🏦 Из других денег: ` +
-            `${formatKopecks(
-                pendingCampFood
-                    .otherTotal
-            )}\n` +
-
-            `➖ Всего расходов CampFood: ` +
-            `${formatKopecks(
-                pendingCampFood.total
-            )}\n\n` +
-
-            `⏳ Пока не распределены между точками.\n\n`;
+    // Не распределённые расходы ещё не входят
+    // в итоги точек. Добавляем их только один раз
+    // в сводный итог всех проектов.
+    if (pendingCampFood.total > 0n) {
+        totalExpense += pendingCampFood.total;
     }
 
     const hasBothCampFoodPoints =
@@ -499,16 +460,56 @@ async function showPeriodReport(
         );
 
     if (hasBothCampFoodPoints) {
-        const allCampFoodExpenses =
-            campFoodExpenseTotal +
-            pendingCampFood.total;
+        const campFoodExpenses =
+            await getCampFoodExpenseSummary(
+                period.startDate,
+                period.endDate
+            );
+
+        text += `🍔 РАСХОДЫ CAMP FOOD\n\n`;
+
+        for (const row of campFoodExpenses.rows) {
+            text +=
+                `${row.name} — ` +
+                `${formatKopecks(row.amount)}\n`;
+        }
 
         text +=
-            `🍔 ВСЕ РАСХОДЫ CAMP FOOD\n` +
-            `➖ Всего: ${formatKopecks(
-                allCampFoodExpenses
-            )} ₽\n\n`;
+            `\n💵 Из дневной выручки: ` +
+            `${formatKopecks(
+                campFoodExpenses.todayRevenueTotal
+            )}\n` +
+
+            `🏦 Из других денег: ` +
+            `${formatKopecks(
+                campFoodExpenses.otherTotal
+            )}\n`;
+
+        if (campFoodExpenses.unknownTotal > 0n) {
+            text +=
+                `❔ Источник не указан: ` +
+                `${formatKopecks(
+                    campFoodExpenses.unknownTotal
+                )}\n`;
+        }
+
+        text +=
+            `➖ Всего расходов CampFood: ` +
+            `${formatKopecks(
+                campFoodExpenses.total
+            )}\n`;
+
+        if (pendingCampFood.total > 0n) {
+            text +=
+                `⏳ Ещё не распределено: ` +
+                `${formatKopecks(
+                    pendingCampFood.total
+                )}\n`;
+        }
+
+        text += "\n";
     }
+
 
     const totalResult =
         totalIncome -
