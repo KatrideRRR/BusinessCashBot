@@ -828,7 +828,7 @@ transactionScene.action(
                 .isCampFoodFixedExpense =
                 true;
 
-            return askCampFoodRentProject(
+            return askCampFoodPointProject(
                 ctx
             );
         }
