@@ -52,6 +52,12 @@ const {
     "./bot/modules/reports"
 );
 
+const {
+    registerExpenseHistoryHandlers,
+} = require(
+    "./bot/modules/expenseHistory"
+);
+
 const closeDayScene =
     require("./bot/scenes/closeDayScene");
 
@@ -1419,6 +1425,7 @@ bot.hears(
 );
 
 registerReportHandlers(bot);
+registerExpenseHistoryHandlers(bot);
 registerOperationHandlers(bot);
 registerUserHandlers(bot);
 

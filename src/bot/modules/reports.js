@@ -330,6 +330,13 @@ async function showPeriodReport(
         ),
     ]);
 
+    buttons.push([
+        Markup.button.callback(
+            "🧾 История оплат",
+            `expense_hist_cats_${periodKey}_0`
+        ),
+    ]);
+
     if (
         projects.length === 0
     ) {
@@ -856,6 +863,14 @@ async function showAllExpenses(
     await ctx.editMessageText(
         text,
         Markup.inlineKeyboard([
+
+            [
+                Markup.button.callback(
+                    "🧾 История оплат",
+                    `expense_hist_cats_${periodKey}_0`
+                ),
+            ],
+
             [
                 Markup.button.callback(
                     "⬅️ К отчёту",
